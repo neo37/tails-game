@@ -18,3 +18,5 @@ store/video/*
 !store/video/race-raw/
 !store/video/update-raw/
 .data/
+
+.DS_Store

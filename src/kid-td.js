@@ -69,6 +69,8 @@ if (ROOM) {
   level = resolveLevel(room.map, room.level, room.lv);
   isHost = room.host === myId;
   if (!level) failPage('Этот уровень не открывается');
+  // название чужого уровня из редактора — свободный текст: остальным игрокам его не показываем
+  if (level.map === 'custom' && !isHost) level = { ...level, name: 'Свой уровень' };
 } else {
   const my = qs.get('my') && myLevels.get(qs.get('my'));
   level = resolveLevel(my ? 'custom' : qs.get('map') || (qs.get('level') === 'castle' ? 'castle' : 'quay'),

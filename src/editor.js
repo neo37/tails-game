@@ -3,6 +3,7 @@
  * Уровень сразу проверяется (есть ли дорога от старта до домика — A* по клеткам дороги)
  * и сохраняется в «Мои уровни» (localStorage) или отдаётся кодом.
  */
+import { isNick } from './nick.js';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
@@ -301,7 +302,7 @@ let readOnly = false;
 function setReadOnly() {
   readOnly = !isMine(design);
   $('foreign').hidden = !readOnly;
-  if (readOnly) $('foreign').textContent = `🔒 Уровень игрока ${design.authorName || 'без имени'}. Менять можно только свою копию.`;
+  if (readOnly) $('foreign').textContent = `🔒 Уровень ${isNick(design.authorName) ? `игрока ${design.authorName}` : 'другого игрока'}. Менять можно только свою копию.`;
   $('btn-copy').hidden = !readOnly;
   $('btn-save').hidden = readOnly;
   for (const id of ['name', 'target', 'diff', 'theme', 'ghosts']) $(id).disabled = readOnly;

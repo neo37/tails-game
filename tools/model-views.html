@@ -1,0 +1,49 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>model views</title>
+<style>body{margin:0;background:#9fd2e6}canvas{display:block}</style>
+<script type="importmap">{ "imports": { "three": "../vendor/three/build/three.module.js", "three/addons/": "../vendor/three/examples/jsm/" } }</script>
+<script type="module">
+// Модель с четырёх сторон (спереди, три четверти, сбоку, сзади) — проверить текстуру и одежду:
+//   tools/model-views.html?glb=../models/tiny-dancer.opt.glb&tint=ffe08a&clip=Running&t=0.3
+// tint — как подружки в игре (цвет умножается на текстуру), clip/t — поза из анимации (без них — исходная поза).
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+const qs = new URLSearchParams(location.search);
+const W = 1600, H = 900;
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setSize(W, H); renderer.setScissorTest(true);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+scene.add(new THREE.HemisphereLight(0xdff4ff, 0x4a6a58, 1.6));
+const sun = new THREE.DirectionalLight(0xfff4d8, 2.4); sun.position.set(4, 8, 6); scene.add(sun);
+const gltf = await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync(qs.get('glb') || '../models/tiny-dancer.opt.glb');
+const model = gltf.scene;
+if (qs.get('tex')) {        // другая текстура поверх (например, раскрашенная карта из tools/dancer-outfit.mjs)
+  const tex = await new THREE.TextureLoader().loadAsync(qs.get('tex'));
+  tex.flipY = false; tex.colorSpace = THREE.SRGBColorSpace;
+  model.traverse((o) => { if (o.isMesh) { o.material = o.material.clone(); o.material.map = tex; } });
+}
+if (qs.get('tint')) model.traverse((o) => { if (o.isMesh) { o.material = o.material.clone(); o.material.color.set('#' + qs.get('tint')); } });
+scene.add(model);
+if (qs.get('clip')) {
+  const mixer = new THREE.AnimationMixer(model);
+  const clip = gltf.animations.find((c) => c.name === qs.get('clip'));
+  if (clip) { mixer.clipAction(clip).play(); mixer.setTime(Number(qs.get('t') || 0) * clip.duration); }
+}
+model.updateMatrixWorld(true);
+const box = new THREE.Box3().setFromObject(model);
+const c = box.getCenter(new THREE.Vector3()), size = box.getSize(new THREE.Vector3());
+const views = [0, Math.PI / 4, Math.PI / 2, Math.PI];
+const cam = new THREE.PerspectiveCamera(30, (W / 4) / H, 0.01, 1000);
+if (qs.get('fy')) c.y = box.min.y + size.y * Number(qs.get('fy'));      // fy — высота центра кадра (доля роста), zoom — крупнее
+views.forEach((a, i) => {
+  const d = size.y * 2.1 / Number(qs.get('zoom') || 1);
+  cam.position.set(c.x + Math.sin(a) * d, c.y, c.z + Math.cos(a) * d); cam.lookAt(c);
+  renderer.setViewport(i * W / 4, 0, W / 4, H); renderer.setScissor(i * W / 4, 0, W / 4, H);
+  renderer.render(scene, cam);
+});
+document.title = 'done';
+</script>

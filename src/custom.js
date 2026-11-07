@@ -4,6 +4,7 @@
  * Уровень хранится строкой (код для обмена): base64url от компактного JSON.
  * Модуль без DOM — им же пользуется сервер (проверяет уровень, присланный хостом комнаты).
  */
+import { isNick } from './nick.js';
 import { Grid, CELL } from './grid.js';
 
 export const EW = 15, EH = 13;
@@ -34,8 +35,9 @@ export function authorId() {
   if (!id) { id = Math.random().toString(36).slice(2, 10); ls.setItem('tg.author', id); }
   return id;
 }
+/** Ник автора для кода уровня — только из готовых слов (src/nick.js), иначе без имени. */
 export function authorName() {
-  try { return JSON.parse(store().getItem('tg.me') || '{}').name || ''; } catch (e) { return ''; }
+  try { const n = JSON.parse(store().getItem('tg.me') || '{}').name; return isNick(n) ? n : ''; } catch (e) { return ''; }
 }
 /** Свой ли уровень. У старых сохранённых автора нет: они созданы здесь, значит свои. У чужого кода без автора — unknown. */
 export const isMine = (d) => !d.author || d.author === authorId();

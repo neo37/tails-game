@@ -173,7 +173,7 @@ const flying = (page) => page.waitForFunction(() => window.__race.state === 'go'
 /* ── два игрока через комнату ── */
 {
   const a = await phone('Аня'), b = await phone('Боря');
-  for (const [pl, n, c, h] of [[a, 'Аня', '#ff6f91', 'ghost'], [b, 'Боря', '#8fd0ff', 'maskot']]) {
+  for (const [pl, n, c, h] of [[a, 'Смелая Лиса', '#ff6f91', 'ghost'], [b, 'Шустрый Ёж', '#8fd0ff', 'maskot']]) {
     await pl.page.goto(`${BASE}/index.html`);
     await pl.page.evaluate((n, c, h) => localStorage.setItem('tg.me', JSON.stringify({ name: n, color: c, emoji: '🦊', hero: h })), n, c, h);
   }
@@ -214,7 +214,7 @@ const flying = (page) => page.waitForFunction(() => window.__race.state === 'go'
   const titles = await Promise.all([a, b].map((x) => x.page.$eval('#ov-title', (e) => e.textContent)));
   const tb = await Promise.all([a, b].map((x) => x.page.$$eval('#ov-table .r .n', (els) => els.map((e) => e.textContent).join(' > '))));
   check(/Первое/.test(titles[1]) && /2/.test(titles[0]), `места: Боря «${titles[1]}», Аня «${titles[0]}»`);
-  check(tb[0] === tb[1] && /Боря.*Аня/.test(tb[0]), `таблица одна у обоих: ${tb[0]}`);
+  check(tb[0] === tb[1] && /Шустрый Ёж.*Смелая Лиса/.test(tb[0]), `таблица одна у обоих: ${tb[0]}`);
   await a.ctx.close(); await b.ctx.close();
 }
 

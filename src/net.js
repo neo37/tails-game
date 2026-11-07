@@ -4,6 +4,7 @@
  * сервер узнаёт того же игрока и возвращает его место в комнате.
  */
 import { parseKit, kitString } from './shop.js';
+import { isNick, randomNick, safeName, ANON } from './nick.js';
 
 export const COLORS = ['#ffd447', '#ff6f91', '#8fd0ff', '#9be37a', '#c7b0ff', '#ffa45c'];
 export const EMOJIS = ['🦊', '🐱', '🐬', '🐢', '🦄', '🐝', '🐙', '🐸', '🐼', '🦁', '🐵', '🐧', '🦉', '🦖', '🐰', '🐯'];
@@ -11,11 +12,13 @@ export const HERO_IDS = ['maskot', 'ghost'];          // Танцовщицу (T
 export const SHIP_IDS = ['wedge', 'arrow', 'delta'];          // корабль в гонке (src/ships.js)
 export const TINTS = ['', '#ff9dbb', '#8fd0ff', '#9be37a', '#ffe07a', '#c7b0ff', '#ffa45c', '#8b8fa8'];   // цвет поверх текстуры, '' — как есть
 
+/** Ник — только из готовых слов (src/nick.js). Старое имя, набранное вручную, один раз заменяется случайным ником. */
 export function me() {
   let m = {};
   try { m = JSON.parse(localStorage.getItem('tg.me') || '{}'); } catch (e) { /* */ }
-  return {
-    name: m.name || '',
+  const fresh = !isNick(m.name);
+  const p = {
+    name: fresh ? randomNick() : m.name,
     color: COLORS.includes(m.color) ? m.color : COLORS[0],
     emoji: EMOJIS.includes(m.emoji) ? m.emoji : EMOJIS[0],
     hero: HERO_IDS.includes(m.hero) ? m.hero : HERO_IDS[0],
@@ -23,11 +26,31 @@ export function me() {
     ship: SHIP_IDS.includes(m.ship) ? m.ship : SHIP_IDS[0],
     kit: parseKit(kitString(m.kit || {})),     // надетые ачивки корабля (src/shop.js)
   };
+  if (fresh) saveMe(p);
+  return p;
 }
 export function saveMe(m) { try { localStorage.setItem('tg.me', JSON.stringify(m)); } catch (e) { /* */ } }
 
+/* Чужие игроки, как их показываем: ник — только из готовых слов, значок — только из списка. */
+export const safeEmoji = (e) => (EMOJIS.includes(e) ? e : EMOJIS[0]);
+/** Подпись «🦊 Смелая Лиса» из списка открытых игр. */
+export const safeLabel = (s) => {
+  const m = /^(\S+) (.+)$/u.exec(String(s || ''));
+  return m ? `${safeEmoji(m[1])} ${safeName(m[2])}` : ANON;
+};
+/** Комната с сервера: имена и значки игроков, ведущий в списке игр, название чужого своего уровня (свободный текст). */
+function cleanRoom(r) {
+  if (!r || typeof r !== 'object') return;
+  if (Array.isArray(r.players)) for (const p of r.players) { p.name = safeName(p.name); p.emoji = safeEmoji(p.emoji); }
+  if (typeof r.host === 'string') r.host = safeLabel(r.host);
+  if (r.map === 'custom') r.levelName = '';
+}
+
+/** Игра открыта в приложении: Android — страницы с appassets.androidplatform.net, iOS — со своей схемы tails://app/. */
+const inApp = () => location.host.endsWith('androidplatform.net') || location.protocol === 'tails:';
+
 /** Адрес HTTP-сервера игры: в приложении — spacecode.business, в браузере — рядом со страницей. */
-export const apiBase = () => (location.host.endsWith('androidplatform.net') ? 'https://spacecode.business/tails/play/' : location.pathname.replace(/[^/]*$/, ''));
+export const apiBase = () => (inApp() ? 'https://spacecode.business/tails/play/' : location.pathname.replace(/[^/]*$/, ''));
 
 const tokenKey = 'tg.token';
 const getToken = () => { try { return sessionStorage.getItem(tokenKey) || ''; } catch (e) { return ''; } };
@@ -48,11 +71,10 @@ export class Net {
 
   connect(profile) {
     this.profile = profile;
-    // сервер командной игры: в Android-приложении (страницы из appassets) — spacecode.business/tails/play,
+    // сервер командной игры: в приложении (Android и iOS) — spacecode.business/tails/play,
     // в браузере — рядом со страницей (/ws на корне или /tails/play/ws за nginx)
-    const app = location.host.endsWith('androidplatform.net');
     const dir = location.pathname.replace(/[^/]*$/, '');
-    const url = window.TAILS_WS || (app ? 'wss://spacecode.business/tails/play/ws'
+    const url = window.TAILS_WS || (inApp() ? 'wss://spacecode.business/tails/play/ws'
       : `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}${dir}ws`);
     const ws = new WebSocket(url);
     this.ws = ws;
@@ -68,6 +90,8 @@ export class Net {
       // эту же вкладку-игрока открыли заново (например, лобби → игра): старое соединение не переподключаем,
       // иначе два соединения выбивали бы друг друга по кругу
       if (m.t === 'kicked') this.closedByUs = true;
+      if (m.t === 'room') cleanRoom(m.room);
+      if (m.t === 'rooms' && Array.isArray(m.rooms)) m.rooms.forEach(cleanRoom);
       if (m.t === 'welcome') {
         this.id = m.id;
         setToken(m.token);

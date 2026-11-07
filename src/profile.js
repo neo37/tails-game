@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { me, saveMe, COLORS, EMOJIS, TINTS, HERO_IDS, SHIP_IDS } from './net.js';
+import { NICK_ADJ, NICK_WHO, nickOf, nickParts, randomNick } from './nick.js';
 import { SHIPS, shipIcon, makeShip } from './ships.js';
 import { Runner, HEROES, loadRunnerModel } from './runner.js';
 
@@ -70,8 +71,17 @@ pick($('ships'), SHIP_IDS, 'ship', (v) => `<button type="button" data-v="${v}" t
 $('ships').addEventListener('click', () => { $('stage-hint').textContent = `Корабль в гонке: ${SHIPS[profile.ship].name}`; });
 $('colors').addEventListener('click', () => { $('ships').querySelectorAll('path').forEach((p) => p.setAttribute('fill', profile.color)); });
 drawShip();
-$('name').value = profile.name;
-$('name').addEventListener('input', () => { profile.name = $('name').value.trim().slice(0, 14); save(); });
+/* имя — из готовых слов (src/nick.js): «какой» подстраивается под род «кого» */
+function fillNick() {
+  const [a, w] = nickParts(profile.name) || [0, 0];
+  $('nick-w').innerHTML = NICK_WHO.map(([word], i) => `<option value="${i}">${word}</option>`).join('');
+  $('nick-a').innerHTML = NICK_ADJ.map((forms, i) => `<option value="${i}">${forms[NICK_WHO[w][1]]}</option>`).join('');
+  $('nick-a').value = String(a); $('nick-w').value = String(w);
+}
+const setName = (name) => { profile.name = name; save(); fillNick(); };
+$('nick-a').onchange = $('nick-w').onchange = () => setName(nickOf(Number($('nick-a').value), Number($('nick-w').value)));
+$('nick-dice').onclick = () => setName(randomNick());
+fillNick();
 
 const clock = new THREE.Clock();
 function tick() {

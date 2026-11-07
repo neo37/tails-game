@@ -179,7 +179,7 @@ async function phone(name, width = 800, height = 360) {
 /* ── с друзьями на своей трассе: из конструктора в лобби, двое в комнате, ветки видны друг у друга ── */
 {
   const a = await phone('Аня'), b = await phone('Боря');
-  for (const [pl, n, c] of [[a, 'Аня', '#ff6f91'], [b, 'Боря', '#8fd0ff']]) {
+  for (const [pl, n, c] of [[a, 'Смелая Лиса', '#ff6f91'], [b, 'Шустрый Ёж', '#8fd0ff']]) {
     await pl.page.goto(`${BASE}/index.html`);
     await pl.page.evaluate((n, c) => localStorage.setItem('tg.me', JSON.stringify({ name: n, color: c, emoji: '🦊', hero: 'ghost' })), n, c);
   }

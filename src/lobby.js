@@ -11,7 +11,6 @@ const $ = (id) => document.getElementById(id);
 const qs = new URLSearchParams(location.search);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const profile = me();
-if (!profile.name) profile.name = `Игрок ${Math.floor(10 + Math.random() * 89)}`;
 saveMe(profile);
 
 /* ── кто ты: выбирается на странице профиля ── */
@@ -56,13 +55,15 @@ const err = (t) => { $('err').textContent = t || ''; };
 function rehello() { if (net.open) net.send({ t: 'hello', token: sessionStorage.getItem('tg.token'), ...profile }); }
 
 const mapName = (r) => (r.map === 'custom' ? '🛠 Свой уровень' : r.map === 'track' ? '🧱 Своя трасса' : `${MAPS[r.map]?.emoji || ''} ${MAPS[r.map]?.name || r.map}`);
-const levelName = (r) => r.levelName || (resolveLevel(r.map, r.level, r.lv) || {}).name || '';
+// название своего уровня из редактора — свободный текст, чужим его не показываем (у трасс — из готовых слов, их можно)
+const levelName = (r) => (r.map === 'custom' ? '' : r.levelName || (resolveLevel(r.map, r.level, r.lv) || {}).name || '');
+const where = (r) => `${mapName(r)}${levelName(r) ? ` · ${esc(levelName(r))}` : ''}`;
 
 net.on('rooms', (m) => {
   if (!EXPERIMENTAL) m.rooms = m.rooms.filter((r) => !MAPS[r.map]?.hidden);    // экспериментальные игры видны только в экспериментальной сборке
   $('games').innerHTML = m.rooms.length ? m.rooms.map((r) => `
     <div class="game" data-code="${r.code}">
-      <div class="what"><b>${mapName(r)} · ${esc(levelName(r))}</b><br><span class="empty">ведёт ${esc(r.host)} · код ${r.code}</span></div>
+      <div class="what"><b>${where(r)}</b><br><span class="empty">ведёт ${esc(r.host)} · код ${r.code}</span></div>
       <span>👫 ${r.n}/${r.max}</span>
       <span class="st ${r.status}">${r.status === 'wait' ? 'ждут' : 'идёт'}</span>
       <button class="btn" data-join="${r.code}" ${r.n >= r.max ? 'disabled' : ''}>Присоединиться</button>
@@ -88,7 +89,7 @@ function showRoom() {
   $('lobby-main').hidden = !!room;
   if (!room) return;
   $('room-code').textContent = room.code;
-  $('room-where').textContent = `· ${mapName(room)} · ${levelName(room)}${room.pub ? '' : ' · только по коду'}`;
+  $('room-where').textContent = `· ${mapName(room)}${levelName(room) ? ` · ${levelName(room)}` : ''}${room.pub ? '' : ' · только по коду'}`;
   $('room-players').innerHTML = room.players.map((p) => `<span class="p${p.online ? '' : ' off'}" style="--c:${p.color}">
     ${p.emoji} ${esc(p.name)}${p.id === room.host ? ' 👑' : ''}${p.id === net.id ? ' (ты)' : ''}</span>`).join('')
     + `<span class="empty">${room.players.length}/4</span>`;

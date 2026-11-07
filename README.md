@@ -101,6 +101,20 @@ node tools/e2e.mjs --custom КОД   # командная игра на своё
 proxy_set_header Connection "upgrade";` на `/ws`), HTTPS обязателен для телефонов (wss://).
 Состояние комнат — в памяти процесса: один процесс, без кластера. Подробности — в ответе/отчёте.
 
+## iOS-приложение
+
+`ios/` — то же, что Android-приложение: WKWebView во весь экран, только горизонтально, iOS 16.4+ (нужен importmap), iPhone и iPad.
+Страницы открываются с `tails://app/…` (`BundleSchemeHandler.swift` отдаёт файлы из `Tails.app/www`), поэтому модули,
+fetch моделей и localStorage работают как на сайте; `src/net.js` по схеме `tails:` понимает, что он в приложении,
+и ходит на `spacecode.business/tails/play`. Пакет `business.spacecode.tails`, версия — из `android/version.properties`.
+
+* `ios/run_sim.sh ["iPhone 17 Pro"]` — собрать и запустить в симуляторе; в выводе — console.* и ошибки страницы.
+  В Debug можно открыть сразу нужную страницу: `xcrun simctl launch <udid> business.spacecode.tails -page 'race.html?level=1'`.
+* `TEAM=<Team ID> ios/build.sh` — IPA для App Store → `ios/dist/tails-<CODE>.ipa`.
+* `ios/screenshots.sh ПАПКА` — снимки для App Store (iPhone 6,9″ и iPad 13″): сцены расставляет отладочный `-js '…'`
+  (скрипт на каждой странице, только в Debug). Пакет для публикации — `../ios_release/`.
+* Игру в приложение копирует `ios/sync_web.sh` на каждой сборке (фаза «Sync web game»): после правок в вебе достаточно пересобрать.
+
 ## Авторы
 
 * **Алиса Киселева** — идея игры, герои, уровни и проверка всего, что в ней есть.

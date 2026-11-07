@@ -17,6 +17,8 @@ import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
 import { MAPS } from '../src/levels.js';
+import { isNick } from '../src/nick.js';
+import { EMOJIS } from '../src/net.js';
 import { decode, toLevel } from '../src/custom.js';
 import { decode as decodeTrack, analyze as analyzeTrack, encode as encodeTrack, trackName } from '../src/race-design.js';
 
@@ -254,9 +256,9 @@ wss.on('connection', (ws, req) => {
       if (!me) { me = { token, id: nextPid++, room: null, ws: null, timer: null }; people.set(token, me); }
       if (me.ws && me.ws !== ws) { send(me.ws, { t: 'kicked', msg: 'Открыто в другой вкладке' }); me.ws.close(4000); }
       me.ws = ws;
-      me.name = clean(m.name, 14) || 'Игрок';
+      me.name = isNick(m.name) ? m.name : 'Игрок';     // ник только из готовых слов (src/nick.js); старые версии могли прислать любой текст
       me.color = COLOR.test(m.color) ? m.color : '#ffd447';
-      me.emoji = clean(m.emoji, 4) || '🦊';
+      me.emoji = EMOJIS.includes(m.emoji) ? m.emoji : '🦊';
       me.hero = ['maskot', 'ghost'].includes(m.hero) ? m.hero : 'maskot';   // старые версии могли прислать dancer
       me.tint = COLOR.test(m.tint) ? m.tint : '';
       me.ship = ['wedge', 'arrow', 'delta'].includes(m.ship) ? m.ship : 'wedge';

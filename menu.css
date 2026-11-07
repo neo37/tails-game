@@ -96,6 +96,9 @@ a.lvl:hover::before { opacity: .75; transform: scale(1.06); }
 .vis { font-size: clamp(12px, 2.3vh, 14px); }
 input[type=text], select { font: inherit; font-size: clamp(14px, 2.8vh, 17px); padding: clamp(4px, 1.1vh, 9px) 10px; border-radius: 12px; border: 2px solid #ffffff33;
         background: #061a2b; color: #fff; min-width: 0; width: 100%; }
+.nick { display: flex; gap: 6px; }
+.nick select { flex: 1 1 0; }
+.nick button { flex: none; font: inherit; font-size: clamp(16px, 3vh, 20px); padding: 0 10px; border-radius: 12px; border: 2px solid #ffffff33; background: #061a2b; cursor: pointer; }
 input.code { text-transform: uppercase; letter-spacing: 5px; width: 6.6em; flex: none; font-weight: 800; text-align: center; }
 .btn.big { font-size: clamp(14px, 2.9vh, 18px); padding: clamp(6px, 1.5vh, 13px) clamp(12px, 1.6vw, 22px); justify-content: center; }
 .games { display: grid; gap: 6px; align-content: start; overflow-y: auto; min-height: 0; flex: 1; scrollbar-width: thin; }
