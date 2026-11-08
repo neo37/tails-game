@@ -2,7 +2,7 @@
 // командная игра — wss://spacecode.business/tails/play/ws. Версия — ../version.properties. Ключ — ../tails-upload.keystore.
 plugins { id 'com.android.application' }
 def props = { f -> def p = new Properties(); def x = rootProject.file(f); if (x.exists()) x.withInputStream { p.load(it) }; p }
-def ver = props('version.properties'), ks = props('keystore.properties')
+def ver = props('version.properties'), ks = props('keystore.properties'), ads = props('ads.properties')
 android {
     namespace 'business.spacecode.tails'
     compileSdk 36
@@ -12,14 +12,21 @@ android {
         targetSdk 36
         versionCode ver.CODE as int
         versionName ver.NAME
+        manifestPlaceholders = [admobAppId: ads.ADMOB_APP_ID]
+        buildConfigField 'String', 'REWARDED_ID', "\"${ads.ADMOB_REWARDED_ID}\""
     }
+    buildFeatures { buildConfig true }
     signingConfigs {
         upload { storeFile rootProject.file('tails-upload.keystore'); storePassword ks.KS_PASS; keyAlias 'upload'; keyPassword ks.KS_PASS }
     }
     buildTypes {
-        release { minifyEnabled true; shrinkResources true; proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'); signingConfig signingConfigs.upload }
+        release { minifyEnabled true; shrinkResources true; proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'; signingConfig signingConfigs.upload }
     }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
     androidResources { noCompress += ['glb', 'js', 'wasm'] }
 }
-dependencies { implementation 'androidx.webkit:webkit:1.14.0' }
+dependencies {
+    implementation 'androidx.webkit:webkit:1.14.0'
+    implementation 'com.google.android.gms:play-services-ads:24.4.0'          // реклама с наградой за ⭐
+    implementation 'com.google.android.ump:user-messaging-platform:3.2.0'     // согласие на рекламу (ЕС)
+}

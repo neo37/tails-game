@@ -14,6 +14,16 @@ import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.webkit.JavascriptInterface;
+
+import com.google.android.gms.ads.AdRequest;
+import com.google.android.gms.ads.LoadAdError;
+import com.google.android.gms.ads.MobileAds;
+import com.google.android.gms.ads.rewarded.RewardedAd;
+import com.google.android.gms.ads.rewarded.RewardedAdLoadCallback;
+import com.google.android.ump.ConsentInformation;
+import com.google.android.ump.ConsentRequestParameters;
+import com.google.android.ump.UserMessagingPlatform;
 
 import androidx.webkit.WebViewAssetLoader;
 
@@ -63,10 +73,62 @@ public class MainActivity extends Activity {
                 return true;
             }
         });
+        web.addJavascriptInterface(new AdsBridge(), "TailsAds");
         setContentView(web);
         immersive();
+        startAds();
         if (state != null) web.restoreState(state);
         else web.loadUrl(HOME);
+    }
+
+    /* ── реклама с наградой: ⭐ за досмотренный ролик. Сначала согласие (UMP, ЕС), потом загрузка ролика ── */
+    private RewardedAd rewarded;
+    private boolean adsReady, adLoading;
+
+    private void startAds() {
+        ConsentInformation ci = UserMessagingPlatform.getConsentInformation(this);
+        ci.requestConsentInfoUpdate(this, new ConsentRequestParameters.Builder().setTagForUnderAgeOfConsent(false).build(),
+            () -> UserMessagingPlatform.loadAndShowConsentFormIfRequired(this, err -> { if (ci.canRequestAds()) initAds(); }),
+            err -> { if (ci.canRequestAds()) initAds(); });
+        if (ci.canRequestAds()) initAds();     // согласие уже было в прошлый раз
+    }
+
+    private void initAds() {
+        if (adsReady) return;
+        adsReady = true;
+        // в игру играют дети: только ролики с рейтингом G (для всех возрастов)
+        MobileAds.setRequestConfiguration(new com.google.android.gms.ads.RequestConfiguration.Builder()
+            .setMaxAdContentRating(com.google.android.gms.ads.RequestConfiguration.MAX_AD_CONTENT_RATING_G).build());
+        MobileAds.initialize(this, st -> loadAd());
+    }
+
+    private void loadAd() {
+        if (adLoading || rewarded != null) return;
+        adLoading = true;
+        RewardedAd.load(this, BuildConfig.REWARDED_ID, new AdRequest.Builder().build(), new RewardedAdLoadCallback() {
+            @Override public void onAdLoaded(RewardedAd ad) { rewarded = ad; adLoading = false; }
+            @Override public void onAdFailedToLoad(LoadAdError e) { rewarded = null; adLoading = false; }
+        });
+    }
+
+    private void toPage(String js) { web.post(() -> web.evaluateJavascript(js, null)); }
+
+    /** window.TailsAds в странице: ready() — ролик загружен; show() — показать, по окончании вызывается window.__adDone(true/false). */
+    class AdsBridge {
+        @JavascriptInterface public boolean ready() { return rewarded != null; }
+        @JavascriptInterface public void show() {
+            runOnUiThread(() -> {
+                RewardedAd ad = rewarded;
+                if (ad == null) { toPage("window.__adDone && window.__adDone(false)"); loadAd(); return; }
+                rewarded = null;
+                final boolean[] earned = { false };
+                ad.setFullScreenContentCallback(new com.google.android.gms.ads.FullScreenContentCallback() {
+                    @Override public void onAdDismissedFullScreenContent() { toPage("window.__adDone && window.__adDone(" + earned[0] + ")"); immersive(); loadAd(); }
+                    @Override public void onAdFailedToShowFullScreenContent(com.google.android.gms.ads.AdError e) { toPage("window.__adDone && window.__adDone(false)"); loadAd(); }
+                });
+                ad.show(MainActivity.this, reward -> earned[0] = true);
+            });
+        }
     }
 
     private void immersive() {

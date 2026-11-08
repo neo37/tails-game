@@ -8,6 +8,7 @@ import { Joystick } from './runner.js';
 import { instantPress } from './touch-camera.js';
 import { apiBase } from './net.js';
 import { points, TASKS, MINUTES_PER_DAY } from './points.js';
+import { adButton } from './ads.js';
 import { W, H, CELL, MAX_BLOCKS, BLOCKS, T, DIFFS, keyOf, xyzOf, inField, newDesign, encode, decode, analyze, autoComplete, autoFork, trackName, myRaces } from './race-design.js';
 
 const $ = (id) => document.getElementById(id);
@@ -39,6 +40,7 @@ function questCheck() {
 }
 if (QUEST) {
   $('quest').hidden = false;
+  adButton($('quest'), () => drawQuest(), (t) => toast(t, 2000));
   setTimeout(() => { if (borrowed) toast('🏆 Задания засчитываются только на своей трассе — начни новую: 🏠 → «＋ Новая»', 4000); }, 600);
   $('quest-head').onclick = () => $('quest').classList.toggle('open');
   setInterval(() => {

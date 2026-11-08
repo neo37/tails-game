@@ -23,6 +23,8 @@ body { touch-action: none; user-select: none; -webkit-user-select: none; font-fa
 #toast { bottom: auto; top: 86px; }
 #quest { position: fixed; z-index: 6; right: calc(8px + env(safe-area-inset-right)); top: calc(max(6px, env(safe-area-inset-top)) + 52px); width: min(270px, 42vw); border-radius: 14px; background: #06192be6; border: 2px solid #ffd447; color: #fff; font-size: 13px; }
 #quest[hidden] { display: none; }
+#quest .ad-btn { display: block; width: calc(100% - 16px); margin: 0 8px 8px; min-height: 38px; border-radius: 10px; border: 2px solid #8fd0ff; background: #0b2a44; color: #fff; font: 800 13px var(--font); cursor: pointer; }
+#quest .ad-btn:disabled { opacity: .55; }
 #quest-head { width: 100%; min-height: 40px; padding: 4px 10px; border: 0; background: none; color: #fff; font: 800 14px var(--font); text-align: left; cursor: pointer; }
 #quest-head b { color: #ffd447; }
 #quest-list { display: none; max-height: calc(100vh - 200px); overflow-y: auto; padding: 0 8px 8px; }

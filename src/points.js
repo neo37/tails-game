@@ -25,6 +25,7 @@ export const TASKS = [
   { id: 'routes4', icon: '🧭', name: 'Четыре разных пути до финиша', pts: 30, check: (a) => a.ok && a.routes.length >= 4 },
 ];
 export const MINUTE_PTS = 1, MINUTES_PER_DAY = 30;
+export const AD_PTS = 10, ADS_PER_DAY = 5;          // реклама с наградой (src/ads.js), только в приложении
 
 export const points = {
   state: load,
@@ -55,6 +56,16 @@ export const points = {
     return MINUTE_PTS;
   },
   minutesToday: () => load().minutes[new Date().toISOString().slice(0, 10)] || 0,
+  adsToday: () => (load().ads || {})[new Date().toISOString().slice(0, 10)] || 0,
+  /** Досмотренный ролик: +10 ⭐, не больше 5 в день. */
+  adReward() {
+    const s = load(), day = new Date().toISOString().slice(0, 10);
+    s.ads = { [day]: (s.ads || {})[day] || 0 };
+    if (s.ads[day] >= ADS_PER_DAY) return 0;
+    s.ads[day]++; s.balance += AD_PTS; s.earned += AD_PTS;
+    store(s);
+    return AD_PTS;
+  },
   /** Купить ачивку: хватает баллов — списываем и она твоя навсегда. */
   buy(id) {
     const s = load(), it = itemById(id);

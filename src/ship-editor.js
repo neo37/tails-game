@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import { me, saveMe, SHIP_IDS } from './net.js';
 import { SHIPS, shipIcon, makeShip } from './ships.js';
 import { SHOP, SLOTS, points, itemById } from './points.js';
+import { adButton } from './ads.js';
 
 const $ = (id) => document.getElementById(id);
 const qs = new URLSearchParams(location.search);
@@ -93,4 +94,5 @@ function tick() {
 render();
 draw();
 tick();
+adButton(document.querySelector('.wallet'), render, toast);
 if (qs.has('debug')) window.__ship = { profile, kit, points, render, get ship() { return ship; } };
