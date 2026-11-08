@@ -154,7 +154,8 @@ if (runnersOn) {
   const start = await td(B, () => window.__td.runner.root.position.toArray());
   const f0 = await td(B, () => window.__td.renderer?.info.render.frame || 0);
   await td(B, () => { window.__td.keys.add('KeyW'); window.__td.keys.add('KeyD'); });
-  await sleep(4000);
+  // держим, пока не пробежит 4 ед.: на 4 вкладках с программной отрисовкой кадров мало, а шаг за кадр ограничен 0,1 с
+  await B.page.waitForFunction((s) => { const p = window.__td.runner.root.position; return Math.hypot(p.x - s[0], p.z - s[2]) > 4.5; }, { timeout: 30000 }, start).catch(() => {});
   console.log('   кадров за 4 с у Бори:', (await td(B, () => window.__td.renderer?.info.render.frame || 0)) - f0, '(swiftshader на 4 вкладки — медленно)');
   await td(B, () => { window.__td.keys.clear(); });
   await sleep(600);

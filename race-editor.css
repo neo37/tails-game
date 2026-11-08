@@ -31,6 +31,6 @@ body { touch-action: none; user-select: none; -webkit-user-select: none; font-fa
 #quest-list .t.done { opacity: .55; }
 #quest-list .t .p { margin-left: auto; color: #ffd447; font-weight: 800; white-space: nowrap; }
 #quest-list .shop { display: block; margin-top: 6px; padding: 6px; border-radius: 10px; background: #ffd447; color: #3a2400; font-weight: 800; text-align: center; text-decoration: none; }
-@media (max-width: 900px) { #btn-pub .t, #btn-fixfork .t { display: none; } }
+@media (max-width: 900px) { #btn-pub .t, #btn-fixfork .t { display: none; } #btn-name { max-width: 130px; } }
 @media (max-width: 720px) { #btn-name { display: none; } #status { font-size: 12px; } .chip { padding: 0 8px; font-size: 13px; } }
 @media (max-width: 480px) { #btn-diff { display: none; } #top .round { width: 38px; } }

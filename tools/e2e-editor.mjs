@@ -30,7 +30,8 @@ check(await page.$eval('#status', (e) => e.className === 'bad'), `пустое �
 // персонаж бежит вправо клавишей D — проверяем, что он двигается и анимация идёт
 const p0 = await page.evaluate(() => window.__ed.runner.root.position.toArray());
 await page.keyboard.down('KeyD');
-await sleep(1500);
+// держим, пока не пробежит 4 ед.: на программной отрисовке кадров мало, а шаг за кадр ограничен 0,1 с
+await page.waitForFunction((p0) => { const p = window.__ed.runner.root.position; return Math.hypot(p.x - p0[0], p.z - p0[2]) > 4; }, { timeout: 20000 }, p0).catch(() => {});
 await page.keyboard.up('KeyD');
 await sleep(300);
 const p1 = await page.evaluate(() => window.__ed.runner.root.position.toArray());
