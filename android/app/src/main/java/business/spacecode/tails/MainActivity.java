@@ -73,6 +73,8 @@ public class MainActivity extends Activity {
                 return true;
             }
         });
+        // без WebChromeClient WebView молча отвечает «нет» на confirm() и не показывает alert(): покупки в мастерской не проходили
+        web.setWebChromeClient(new android.webkit.WebChromeClient());
         web.addJavascriptInterface(new AdsBridge(), "TailsAds");
         setContentView(web);
         immersive();
@@ -84,6 +86,7 @@ public class MainActivity extends Activity {
     /* ── реклама с наградой: ⭐ за досмотренный ролик. Сначала согласие (UMP, ЕС), потом загрузка ролика ── */
     private RewardedAd rewarded;
     private boolean adsReady, adLoading;
+    private int adRetry;
 
     private void startAds() {
         ConsentInformation ci = UserMessagingPlatform.getConsentInformation(this);
@@ -106,8 +109,13 @@ public class MainActivity extends Activity {
         if (adLoading || rewarded != null) return;
         adLoading = true;
         RewardedAd.load(this, BuildConfig.REWARDED_ID, new AdRequest.Builder().build(), new RewardedAdLoadCallback() {
-            @Override public void onAdLoaded(RewardedAd ad) { rewarded = ad; adLoading = false; }
-            @Override public void onAdFailedToLoad(LoadAdError e) { rewarded = null; adLoading = false; }
+            @Override public void onAdLoaded(RewardedAd ad) { rewarded = ad; adLoading = false; adRetry = 0; }
+            @Override public void onAdFailedToLoad(LoadAdError e) {
+                // нет ролика (новый блок, нет показов в регионе, нет сети) — пробуем снова: 30 с, 1, 2, 4… до 10 мин
+                rewarded = null; adLoading = false;
+                long wait = Math.min(600_000L, 30_000L << Math.min(adRetry++, 5));
+                web.postDelayed(MainActivity.this::loadAd, wait);
+            }
         });
     }
 

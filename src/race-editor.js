@@ -7,8 +7,8 @@ import * as THREE from 'three';
 import { Joystick } from './runner.js';
 import { instantPress } from './touch-camera.js';
 import { apiBase } from './net.js';
-import { points, TASKS, MINUTES_PER_DAY } from './points.js';
-import { adButton } from './ads.js';
+import { points, TASKS, MINUTES_PER_DAY, AD_PTS, ADS_PER_DAY } from './points.js';
+import { adButton, adsAvailable, adsLeftToday } from './ads.js';
 import { W, H, CELL, MAX_BLOCKS, BLOCKS, T, DIFFS, keyOf, xyzOf, inField, newDesign, encode, decode, analyze, autoComplete, autoFork, trackName, myRaces } from './race-design.js';
 
 const $ = (id) => document.getElementById(id);
@@ -21,7 +21,7 @@ function toast(text, ms = 2200) {
   toast.t = setTimeout(() => el.classList.remove('show'), ms);
 }
 
-/* ── «Редактор с заданиями» (?quest=1): за задания и минуты стройки — ⭐ баллы на ачивки корабля. Реклама — позже. ── */
+/* ── «Редактор с заданиями» (?quest=1): за задания, минуты стройки и ролики (в приложении) — ⭐ баллы на ачивки корабля. ── */
 const QUEST = qs.has('quest');
 let builtThisMinute = false;
 function drawQuest() {
@@ -31,6 +31,9 @@ function drawQuest() {
   $('quest-n').textContent = `· ${done}/${TASKS.length}`;
   $('quest-list').innerHTML = TASKS.map((t) => `<div class="t${points.isDone(t.id) ? ' done' : ''}"><span>${points.isDone(t.id) ? '✅' : t.icon}</span><span>${t.name}</span><span class="p">+${t.pts}</span></div>`).join('')
     + `<div class="t"><span>⏱️</span><span>Минута стройки: сегодня ${points.minutesToday()}/${MINUTES_PER_DAY}</span><span class="p">+1</span></div>`
+    + (adsAvailable()
+      ? `<div class="t${adsLeftToday() <= 0 ? ' done' : ''}"><span>${adsLeftToday() <= 0 ? '✅' : '📺'}</span><span>Посмотри ролик (кнопка ниже): сегодня ${ADS_PER_DAY - adsLeftToday()}/${ADS_PER_DAY}</span><span class="p">+${AD_PTS}</span></div>`
+      : `<div class="t"><span>📺</span><span>Ролик за звёзды — в приложении для Android</span><span class="p">+${AD_PTS}</span></div>`)
     + '<a class="shop" href="ship.html">🛠 Мастерская корабля</a>';
 }
 function questCheck() {
