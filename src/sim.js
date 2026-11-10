@@ -18,7 +18,14 @@ export const FRIENDS = {
   iva:    { name: 'Ива',    emoji: '🔔', model: 'dancer', tint: 0xc7b0ff, cost: 80,  range: 18, damage: 34, rate: 1.8 },
   maskot: { name: 'Маскот', emoji: '⚡', model: 'maskot', tint: 0xffffff, cost: 110, range: 15, damage: 46, rate: 1.1 },
   castle: { name: 'Замок',  emoji: '🏰', model: 'castle', tint: 0xffd447, cost: 50,  range: 16, damage: 14, rate: 0.8 },
+  // 1.15: пушки из магазина (покупаются навсегда за золото 🪙, ставятся за ракушки на любом уровне).
+  // Урон в секунду на ракушку — как у подружек (~0.25–0.4), чтобы не ломать баланс уровней.
+  splash:  { name: 'Брызгалка',    emoji: '💦', model: 'cannon', tint: 0x5ec8ff, cost: 55,  range: 12, damage: 6,  rate: 0.45, slow: 0.5, price: 80,  about: 'часто брызгает — тени вязнут' },
+  popper:  { name: 'Хлопушка',     emoji: '🎉', model: 'cannon', tint: 0xff7ab8, cost: 75,  range: 14, damage: 16, rate: 0.9,  splash: 2.6, price: 150, about: 'хлопает конфетти — задевает соседних' },
+  star:    { name: 'Звездомёт',    emoji: '⭐', model: 'cannon', tint: 0xffd447, cost: 120, range: 22, damage: 50, rate: 1.6,  price: 300, about: 'бьёт очень далеко и сильно' },
+  rainbow: { name: 'Радуга-пушка', emoji: '🌈', model: 'cannon', tint: 0xb78cff, cost: 170, range: 16, damage: 22, rate: 0.5,  splash: 3, slow: 0.4, price: 500, about: 'по всем рядом и замедляет' },
 };
+export const CANNON_IDS = ['splash', 'popper', 'star', 'rainbow'];   // в конце списка: номера в снимках у старых подружек не сдвигаются
 export const FRIEND_KEYS = Object.keys(FRIENDS);   // индекс в снимке ↔ id
 
 /**
@@ -319,7 +326,7 @@ export class Sim {
     switch (a.k) {
       case 'build': {
         const f = FRIENDS[a.f];
-        if (spot < 0 || !this.spots[spot].ok || !f || !this.level.friends.includes(a.f)) return { ok: false, err: 'нельзя' };
+        if (spot < 0 || !this.spots[spot].ok || !f || !(this.level.friends.includes(a.f) || CANNON_IDS.includes(a.f))) return { ok: false, err: 'нельзя' };
         if (this.towers.has(spot)) return { ok: false, err: 'плита занята' };
         if (p.shells < f.cost) return { ok: false, err: 'не хватает ракушек' };
         if (this.maze) { const why = this.mazeFree(spot); if (why) return { ok: false, err: why }; }
