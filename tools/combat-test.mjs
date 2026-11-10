@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /** Проверка правил без графики: бой персонажа, командная игра, свои уровни. Запуск: node tools/combat-test.mjs */
-import { Sim, HERO, IDLE_AFTER, waveInfo } from '../src/sim.js';
+import { Sim, HERO, IDLE_AFTER, waveInfo, SPECIAL, towerStats } from '../src/sim.js';
 import { teamMult } from '../src/balance.js';
 import { toLevel, encode, decode, sampleDesign, GHOSTS, copyDesign } from '../src/custom.js';
 let fails = 0;
@@ -160,6 +160,37 @@ console.log('свой уровень');
   const old = Buffer.from(JSON.stringify({ v: 1, n: 'Старый', c: '195.', t: 8, d: 'easy', th: 'castle' })).toString('base64');
   const oldD = decode(old);
   check(oldD && !oldD.friends.length, 'старые коды читаются');
+}
+console.log('особый удар подружек (с 3-го роста)');
+{
+  const shoot = (lvl, n0 = 0, times = 8) => {
+    const s = game(); s.players.get(1).shells = 1e6;
+    const r = s.act(1, { k: 'build', s: 0, f: 'mila' });
+    const t = s.towers.get(0);
+    if (!t) return { err: r && r.err };
+    Object.assign(t, towerStats('mila', lvl), { level: lvl, n: n0, range: 1e4 });   // тень встаёт на свою дорогу — радиус с запасом
+    const out = [], sp = s.spots[0];
+    for (let k = 0; k < times; k++) {
+      s.enemies.length = 0; s.shots.length = 0;
+      s.spawn({ hp: 1e7, speed: 0.001, scale: 1, bounty: 1, big: false });
+      const e = s.enemies[s.enemies.length - 1]; e.x = sp.x + 3; e.z = sp.z; e.rem = 1;
+      t.cool = 0; s.step(1 / 30);
+      out.push(s.shots[0] ? s.shots[0].damage : null);
+    }
+    return { out, base: t.damage };
+  };
+  const low = shoot(2), high = shoot(3);
+  check(low.out && low.out.every((d) => d === low.base), `на 2-м росте все выстрелы обычные (${low.err || low.out.join(',')})`);
+  check(high.out && high.out.every((d) => d === Math.round(high.base * (1 + 0 * SPECIAL.mult))) || SPECIAL.mult !== 1, `урон особого удара не растёт (баланс): ${high.err || high.out.join(',')}`);
+  {   // особый удар Теи: замедление дольше обычного
+    const s = game(); s.players.get(1).shells = 1e6; s.act(1, { k: 'build', s: 0, f: 'teya' });
+    const t = s.towers.get(0); Object.assign(t, towerStats('teya', 3), { level: 3, n: SPECIAL.every - 1, range: 1e4, cool: 0 });
+    const ev = []; const emit = s.emit.bind(s); s.emit = (e) => { ev.push(e); return emit(e); };
+    s.spawn({ hp: 1e7, speed: 0.001, scale: 1, bounty: 1, big: false });
+    s.step(1 / 30);
+    const sh = s.shots[0];
+    check(sh && sh.slowFor === SPECIAL.slowFor && ev.some((e) => e[0] === 'f' && e[3] === 1), `особый выстрел Теи помечен и замедляет на ${sh && sh.slowFor} с вместо 1.6`);
+  }
 }
 console.log(`\nошибок: ${fails}`);
 process.exit(fails ? 1 : 0);

@@ -14,7 +14,9 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { touchCamera, instantPress, thumbZone } from './touch-camera.js';
 import { audio } from './audio.js';
 import { mapById, resolveLevel, spotsOf, houseOf, pathsOf, progress, teamLevel } from './levels.js';
-import { HERO, Sim, FRIENDS, FRIEND_KEYS, Path, mazeState, starsFor, towerStats, START_TAILS, DANCE_LEN } from './sim.js';
+import { HERO, Sim, FRIENDS, FRIEND_KEYS, Path, mazeState, starsFor, towerStats, START_TAILS, DANCE_LEN, SPECIAL } from './sim.js';
+let specialTold = false;            // подсказка про особый удар — один раз за игру
+const PERK = { teya: ': дольше замедляет', niksha: ': шире брызги' };
 import { Net, me as myProfile } from './net.js';
 import { myLevels } from './custom.js';
 import { Runner, Joystick, loadRunnerModel, makeLabel, HEROES, ghostKit } from './runner.js';
@@ -810,7 +812,7 @@ function showBuild(spotIndex) {
     const up = document.createElement('button');
     up.className = 'friend';
     up.dataset.act = 'up';
-    up.innerHTML = `<span class="face">⬆️</span><b>Подрасти</b><span class="price">🐚 ${upCost}</span>`;
+    up.innerHTML = `<span class="face">⬆️</span><b>Подрасти</b><span class="price">🐚 ${upCost}</span>${tower.level + 1 === SPECIAL.level ? `<small class="perk">✨ откроет особый удар${PERK[tower.id] || ''}</small>` : tower.level >= SPECIAL.level ? `<small class="perk">✨ особый удар каждый ${SPECIAL.every}-й выстрел${PERK[tower.id] || ''}</small>` : ''}`;
     up.disabled = shells < upCost;
     up.onclick = () => { if (doAct({ k: 'up', s: spotIndex })) setTimeout(() => { if (pickedSpot === spotIndex) showBuild(spotIndex); }, 250); };
     host.append(up, sellButton(spotIndex, tower));
@@ -915,7 +917,9 @@ function handleEvents(events) {
         clearTimeout(ta.back);
         ta.back = setTimeout(() => ta.actor.play('idle', ta.actor.def.idleSpeed, 0.2), 600);
         const owner = view.towers.get(ev[1])?.owner;
-        const ball = new THREE.Mesh(new THREE.SphereGeometry(0.55, 12, 10),
+        const power = ev[3] === 1;          // особый удар (с 3-го роста каждый 4-й выстрел): шар крупнее и с искрами
+        if (power) { sparks(ta.actor.root.position, 6, 0xfff3a0); if (!specialTold && view.towers.get(ev[1])?.owner === myId) { specialTold = true; toast(`✨ ${FRIENDS[ta.id].name}: особый удар!`, 1400); } }
+        const ball = new THREE.Mesh(new THREE.SphereGeometry(power ? 0.95 : 0.55, 12, 10),
           new THREE.MeshBasicMaterial({ color: TEAM ? new THREE.Color(ownerColor(owner)) : FRIENDS[ta.id].tint }));
         if (ta.actor.muzzle) ta.actor.muzzle(ball.position); else ball.position.copy(ta.actor.root.position).setY(3.6);
         scene.add(ball);

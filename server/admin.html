@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Хвосты — радио</title>
+<style>
+  :root { --bg:#0b0820; --card:#16112e; --ink:#f3efff; --mu:#a59cc9; --line:#2b2350; --neon:#ff3fb4; --cyan:#3ff3ff; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: radial-gradient(ellipse at 20% 0%, #2a1060, var(--bg) 60%); color: var(--ink); font: 15px/1.45 system-ui, sans-serif; min-height: 100vh; }
+  main { max-width: 760px; margin: 0 auto; padding: 24px 16px 60px; }
+  h1 { margin: 0 0 4px; font-size: 28px; letter-spacing: .02em; text-shadow: 0 0 18px rgba(255,63,180,.55); }
+  p.sub { margin: 0 0 18px; color: var(--mu); }
+  .drop { border: 2px dashed var(--neon); border-radius: 18px; padding: 26px; text-align: center; background: rgba(255,63,180,.06); cursor: pointer; transition: background .15s; }
+  .drop.over { background: rgba(255,63,180,.16); }
+  .drop b { font-size: 18px; display: block; margin-bottom: 4px; }
+  .drop small { color: var(--mu); }
+  ul { list-style: none; padding: 0; margin: 18px 0 0; display: grid; gap: 8px; }
+  li { display: flex; align-items: center; gap: 10px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px; }
+  li .n { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: rgba(63,243,255,.12); color: var(--cyan); font-weight: 800; flex: none; }
+  li input { flex: 1; min-width: 0; background: transparent; border: 0; color: var(--ink); font: 600 15px system-ui; padding: 4px 0; }
+  li input:focus { outline: 1px solid var(--cyan); border-radius: 6px; }
+  li small { color: var(--mu); white-space: nowrap; }
+  button { font: inherit; color: var(--ink); background: #241c47; border: 1px solid var(--line); border-radius: 10px; min-height: 36px; min-width: 36px; padding: 0 10px; cursor: pointer; }
+  button.del { color: #ff8aa8; }
+  .msg { margin-top: 12px; color: var(--cyan); min-height: 1.4em; }
+  audio { width: 100%; margin-top: 14px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>📻 Радио гонок</h1>
+  <p class="sub">Треки играют по очереди во время гонок и ралли — как радио. Порядок — стрелками, название можно поправить прямо в строке.</p>
+  <label class="drop" id="drop"><b>Перетащите сюда .mp3 или нажмите</b><small>можно несколько сразу · до 30 МБ каждый</small>
+    <input id="file" type="file" accept=".mp3,audio/mpeg" multiple hidden></label>
+  <div class="msg" id="msg"></div>
+  <ul id="list"></ul>
+  <audio id="pl" controls preload="none"></audio>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+let tracks = [];
+const msg = (t) => ($('msg').textContent = t);
+async function api(path, opt) {
+  const r = await fetch(path, Object.assign({ credentials: 'same-origin' }, opt));
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error || r.status);
+  return d;
+}
+function draw() {
+  $('list').innerHTML = '';
+  tracks.forEach((t, i) => {
+    const li = document.createElement('li');
+    li.innerHTML = '<span class="n">' + (i + 1) + '</span>';
+    const inp = document.createElement('input');
+    inp.value = t.title;
+    inp.onchange = async () => { tracks = (await api('api/admin/music/rename', { method: 'POST', body: JSON.stringify({ id: t.id, title: inp.value }) })).tracks; msg('Название сохранено'); };
+    const play = document.createElement('button'); play.textContent = '▶'; play.title = 'Послушать';
+    play.onclick = () => { $('pl').src = t.url; $('pl').play(); };
+    const upB = document.createElement('button'); upB.textContent = '↑'; upB.disabled = i === 0; upB.onclick = () => move(i, -1);
+    const dnB = document.createElement('button'); dnB.textContent = '↓'; dnB.disabled = i === tracks.length - 1; dnB.onclick = () => move(i, 1);
+    const del = document.createElement('button'); del.className = 'del'; del.textContent = '✕'; del.title = 'Удалить';
+    del.onclick = async () => { if (!confirm('Удалить «' + t.title + '»?')) return; tracks = (await api('api/admin/music?id=' + encodeURIComponent(t.id), { method: 'DELETE' })).tracks; draw(); msg('Удалено'); };
+    li.append(inp, play, upB, dnB, del);
+    $('list').append(li);
+  });
+  if (!tracks.length) $('list').innerHTML = '<li><small>Треков пока нет — во время гонки играет встроенная музыка.</small></li>';
+}
+async function move(i, d) {
+  const ids = tracks.map((t) => t.id);
+  [ids[i], ids[i + d]] = [ids[i + d], ids[i]];
+  tracks = (await api('api/admin/music/order', { method: 'POST', body: JSON.stringify(ids) })).tracks;
+  draw();
+}
+async function upload(files) {
+  for (const f of files) {
+    if (!/\.mp3$/i.test(f.name)) { msg('Пропущен «' + f.name + '»: нужен .mp3'); continue; }
+    msg('Загружаю «' + f.name + '»…');
+    try {
+      tracks = (await api('api/admin/music?title=' + encodeURIComponent(f.name), { method: 'POST', body: f, headers: { 'content-type': 'audio/mpeg' } })).tracks;
+      draw();
+      msg('Загружено: ' + f.name);
+    } catch (e) { msg('Не загрузился «' + f.name + '»: ' + e.message); }
+  }
+}
+$('file').onchange = () => upload([...$('file').files]);
+const drop = $('drop');
+drop.ondragover = (e) => { e.preventDefault(); drop.classList.add('over'); };
+drop.ondragleave = () => drop.classList.remove('over');
+drop.ondrop = (e) => { e.preventDefault(); drop.classList.remove('over'); upload([...e.dataTransfer.files]); };
+api('api/music').then((d) => { tracks = d.tracks.map((t) => Object.assign(t, { url: t.url })); draw(); }).catch((e) => msg('Ошибка: ' + e.message));
+</script>
+</body>
+</html>

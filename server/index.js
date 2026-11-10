@@ -20,6 +20,7 @@ import { MAPS } from '../src/levels.js';
 import { isNick } from '../src/nick.js';
 import { EMOJIS } from '../src/net.js';
 import { decode, toLevel } from '../src/custom.js';
+import { musicApi } from './music.js';
 import { decode as decodeTrack, analyze as analyzeTrack, encode as encodeTrack, trackName } from '../src/race-design.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -37,6 +38,7 @@ const log = (...a) => { if (!process.env.QUIET) console.log(new Date().toISOStri
 // Каталог без авторов и свободного текста: код трассы и номер. Жалобы считаются с разных устройств, три жалобы скрывают трассу.
 const DATA_DIR = process.env.DATA_DIR || path.join(ROOT, '.data');
 const TRACKS_FILE = path.join(DATA_DIR, 'tracks.json');
+const music = musicApi(DATA_DIR, ROOT);   // радио гонок: mp3 из админки (/admin)
 const MAX_TRACKS = 2000, MAX_PUBLISH_PER_HOUR = 60, HIDE_AT = 3;
 let tracks = [];
 try { tracks = JSON.parse(fs.readFileSync(TRACKS_FILE, 'utf8')); } catch { /* каталог ещё пуст */ }
@@ -123,6 +125,7 @@ function serveStatic(req, res) {
     return;
   }
   if (url === '/healthz') { res.writeHead(200); res.end('ok'); return; }
+  if (music(req, res, url)) return;
   if (url.startsWith('/api/tracks') && tracksApi(req, res, url)) return;
   const file = path.join(ROOT, url);
   if (!PUBLIC.test(url) || url.includes('..') || !file.startsWith(ROOT + path.sep)) { res.writeHead(404); res.end('нет такого'); return; }
@@ -350,6 +353,16 @@ wss.on('connection', (ws, req) => {
           pushList();
         }
         break;
+      case 'voice': {        // голос 3 с (webm/mp4, base64) → остальным в этой комнате; только друзья по коду комнаты
+        if (!r || r.status !== 'play') break;
+        const a = typeof m.a === 'string' ? m.a : '';
+        if (a.length < 200 || a.length > 60000 || !/^[A-Za-z0-9+/=]+$/.test(a)) break;
+        if (me.voiceAt && Date.now() - me.voiceAt < 8000) break;   // не чаще раза в 8 секунд
+        me.voiceAt = Date.now();
+        const vm = JSON.stringify({ t: 'voice', from: me.id, a, mime: m.mime === 'audio/mp4' ? 'audio/mp4' : 'audio/webm' });
+        for (const tok of r.order) if (tok !== me.token) send(people.get(tok).ws, vm);
+        break;
+      }
       case 'ping':
         send(ws, { t: 'pong', at: m.at });
         break;
