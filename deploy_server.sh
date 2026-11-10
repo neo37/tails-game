@@ -40,6 +40,11 @@ s=s[:k]+blk+s[k:]
 open(p,"w").write(s)
 PY
 fi
+# 1.14: радио — mp3 из админки до 30 МБ (у /tails/play/ действует nginx-умолчание 1 МБ): отдельный location для /api/admin/
+if ! grep -q "tails/play/api/admin" $C; then
+  cp $C /root/spacecode.business.nginx.bak-$(date +%s)
+  sed -i "s#^\(\s*\)location /tails/play/ { proxy_pass http://127.0.0.1:8841/; proxy_http_version 1.1; }#&\n\1location /tails/play/api/admin/ { proxy_pass http://127.0.0.1:8841/api/admin/; proxy_http_version 1.1; client_max_body_size 32m; proxy_request_buffering off; proxy_read_timeout 300s; }#" $C
+fi
 nginx -t && systemctl reload nginx'
 sleep 1
 curl -s -o /dev/null -w "игра: %{http_code}\n" https://spacecode.business/tails/play/
