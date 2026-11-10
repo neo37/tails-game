@@ -14,7 +14,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { touchCamera, instantPress, thumbZone } from './touch-camera.js';
 import { audio } from './audio.js';
 import { mapById, resolveLevel, spotsOf, houseOf, pathsOf, progress, teamLevel } from './levels.js';
-import { HERO, Sim, FRIENDS, FRIEND_KEYS, Path, mazeState, starsFor, towerStats, START_TAILS, DANCE_LEN, SPECIAL } from './sim.js';
+import { HERO, Sim, FRIENDS, FRIEND_KEYS, Path, mazeState, starsFor, towerStats, START_TAILS, DANCE_LEN, SPECIAL, CANNON_IDS } from './sim.js';
 let specialTold = false;            // подсказка про особый удар — один раз за игру
 const PERK = { teya: ': дольше замедляет', niksha: ': шире брызги' };
 import { Net, me as myProfile } from './net.js';
@@ -92,6 +92,30 @@ const PATHS = pathsOf(level).map((p) => p.map(([x, z]) => new THREE.Vector3(x, 0
 const SIMPATHS = pathsOf(level).map((p) => new Path(p));
 const MAZE = !!level.maze;
 const FRIEND_IDS = level.friends;
+
+/* ─────────────────── золото, пушки и вещи из магазина (на все уровни, localStorage) ─────────────────── */
+const LS = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* без памяти */ } },
+};
+const bank = {
+  get gold() { return LS.get('tails.gold', 0) | 0; },
+  set gold(v) { LS.set('tails.gold', Math.max(0, v | 0)); },
+  owned() { return LS.get('tails.cannons', []).filter((id) => CANNON_IDS.includes(id)); },
+  own(id) { const o = this.owned(); if (!o.includes(id)) { o.push(id); LS.set('tails.cannons', o); } },
+  items() { return LS.get('tails.items', []); },
+  ownItem(id) { const o = this.items(); if (!o.includes(id)) { o.push(id); LS.set('tails.items', o); } },
+  worn() { return LS.get('tails.worn', []); },
+  setWorn(list) { LS.set('tails.worn', list); },
+};
+/** Вещи для подружек. Секрет стоит 999 — открываешь и получаешь поздравление и подарок 1000 золота. */
+const ITEMS = {
+  glasses: { name: 'Очки', emoji: '🕶️', price: 60, about: 'солнечные очки — всем подружкам' },
+  hat: { name: 'Шляпа', emoji: '🎩', price: 90, about: 'нарядная шляпа с лентой' },
+  ball: { name: 'Баскетбольный мяч', emoji: '🏀', price: 120, about: 'мяч в руке — для настоящих чемпионок' },
+  secret: { name: 'Секрет', emoji: '🎁', price: 999, about: 'что внутри? узнаешь, когда откроешь!' },
+};
+const WEARABLE = ['glasses', 'hat', 'ball'];
 const CASTLE = FRIEND_IDS.includes('castle');
 const RUNNER_ON = level.map !== 'quay' || TEAM || qs.has('runner');   // в командной игре персонажи бегают на всех картах
 if (CASTLE) $('load-text').textContent = 'Носим камни для замка…';
@@ -332,6 +356,73 @@ class Actor {
 
   setSpeed(t) { if (this.current) this.current.setEffectiveTimeScale(t); }
 
+  /** Вещи из магазина: очки у лица, шляпа на макушке, мяч в правой руке — каждый кадр следуют за костями. */
+  wear(list) {
+    if (this.gear) { this.root.remove(this.gear); this.gear = null; }
+    list = (list || []).filter((x) => WEARABLE.includes(x));
+    if (!list.length) return;
+    const bone = (re) => { let b = null; this.model.traverse((o) => { if (!b && o.isBone && re.test(o.name)) b = o; }); return b; };
+    this.bones = { head: bone(/^Head$/), front: bone(/^headfront$/i), top: bone(/^head_end$/i), hand: bone(/^RightHand$/) };
+    const H = this.def.height || 6.4;
+    this.gear = new THREE.Group();
+    this.root.add(this.gear);
+    const mk = (geo, color, extra) => new THREE.Mesh(geo, new THREE.MeshStandardMaterial(Object.assign({ color, roughness: 0.45 }, extra || {})));
+    this.gearParts = {};
+    if (list.includes('glasses')) {
+      const g = new THREE.Group(), r = H * 0.03;
+      for (const sx of [-1, 1]) {
+        const rim = mk(new THREE.TorusGeometry(r, r * 0.22, 8, 20), 0x1b1b22);
+        rim.position.x = sx * r * 1.15;
+        const lens = mk(new THREE.CircleGeometry(r, 20), 0x2a3b55, { transparent: true, opacity: 0.75, metalness: 0.6, roughness: 0.15 });
+        lens.position.copy(rim.position);
+        g.add(rim, lens);
+      }
+      g.add(mk(new THREE.BoxGeometry(r * 0.6, r * 0.18, r * 0.18), 0x1b1b22));
+      this.gear.add(g);
+      this.gearParts.glasses = g;
+    }
+    if (list.includes('hat')) {
+      const g = new THREE.Group();
+      g.add(mk(new THREE.CylinderGeometry(H * 0.1, H * 0.1, H * 0.008, 28), 0x2b2140));
+      const crown = mk(new THREE.CylinderGeometry(H * 0.058, H * 0.062, H * 0.075, 28), 0x2b2140);
+      crown.position.y = H * 0.04;
+      const band = mk(new THREE.CylinderGeometry(H * 0.0635, H * 0.0635, H * 0.016, 28), 0xff4d8d);
+      band.position.y = H * 0.012;
+      g.add(crown, band);
+      this.gear.add(g);
+      this.gearParts.hat = g;
+    }
+    if (list.includes('ball')) {
+      const g = new THREE.Group(), R = H * 0.05;
+      g.add(mk(new THREE.SphereGeometry(R, 20, 14), 0xf07a1f, { roughness: 0.7 }));
+      for (const rot of [[0, 0, 0], [Math.PI / 2, 0, 0], [0, 0, Math.PI / 2]]) {
+        const seam = mk(new THREE.TorusGeometry(R * 1.005, R * 0.05, 6, 28), 0x1b1208);
+        seam.rotation.set(...rot);
+        g.add(seam);
+      }
+      this.gear.add(g);
+      this.gearParts.ball = g;
+    }
+  }
+
+  placeGear() {
+    if (!this.gear) return;
+    const v = this._gv || (this._gv = new THREE.Vector3());
+    const H = this.def.height || 6.4;
+    this.root.updateMatrixWorld(true);
+    const at = (b, dy, dz) => {
+      if (!b) return null;
+      b.getWorldPosition(v);
+      this.root.worldToLocal(v);
+      v.y += dy; v.z += dz;
+      return v;
+    };
+    const P = this.gearParts;
+    if (P.glasses) { const q = at(this.bones.front || this.bones.head, this.bones.front ? 0 : H * 0.05, this.bones.front ? H * 0.012 : H * 0.07); if (q) P.glasses.position.copy(q); }
+    if (P.hat) { const q = at(this.bones.top || this.bones.head, this.bones.top ? -H * 0.01 : H * 0.12, 0); if (q) P.hat.position.copy(q); }
+    if (P.ball) { const q = at(this.bones.hand, 0, H * 0.03); if (q) { P.ball.position.copy(q); P.ball.rotation.y += 0.05; } }
+  }
+
   update(dt) {
     this.mixer.update(dt);
     if (this.hips) {
@@ -341,6 +432,59 @@ class Actor {
       this.model.position.x -= this._v.x;
       this.model.position.z -= this._v.z;
     }
+    this.placeGear();
+  }
+}
+
+/** Пушка из магазина: лафет, два колеса, ствол цвета пушки; ствол смотрит на цель, при выстреле откатывается. */
+class CannonActor {
+  constructor(tint) {
+    this.root = new THREE.Group();
+    this.def = { idleSpeed: 1, clips: {} };
+    const wood = new THREE.MeshStandardMaterial({ color: 0x8a5a33, roughness: 0.8 });
+    const iron = new THREE.MeshStandardMaterial({ color: tint, roughness: 0.35, metalness: 0.45, emissive: tint, emissiveIntensity: 0.12 });
+    const dark = new THREE.MeshStandardMaterial({ color: 0x2b2b33, roughness: 0.6 });
+    this.yaw = new THREE.Group();
+    this.root.add(this.yaw);
+    const base = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.7, 3), wood);
+    base.position.y = 1.1;
+    this.yaw.add(base);
+    for (const sx of [-1, 1]) {
+      const w = new THREE.Mesh(new THREE.CylinderGeometry(1.05, 1.05, 0.35, 18), dark);
+      w.rotation.z = Math.PI / 2;
+      w.position.set(sx * 1.35, 1.05, -0.2);
+      const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.42, 10), iron);
+      hub.rotation.z = Math.PI / 2;
+      hub.position.copy(w.position);
+      this.yaw.add(w, hub);
+    }
+    this.barrel = new THREE.Group();
+    this.barrel.position.set(0, 2.1, 0);
+    const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.75, 3.6, 18), iron);
+    tube.rotation.x = Math.PI / 2;
+    tube.position.z = 1.1;
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.62, 0.16, 8, 18), iron);
+    ring.position.z = 2.85;
+    const back = new THREE.Mesh(new THREE.SphereGeometry(0.78, 14, 10), iron);
+    back.position.z = -0.7;
+    this.barrel.add(tube, ring, back);
+    this.yaw.add(this.barrel);
+    this.tip = new THREE.Object3D();
+    this.tip.position.set(0, 0, 3.1);
+    this.barrel.add(this.tip);
+    this.root.scale.setScalar(1.15);
+    this.kick = 0;
+    this.t = Math.random() * 5;
+  }
+  play(clip) { if (clip === 'attack') this.kick = 1; }
+  setSpeed() {}
+  aim(pos) { const r = this.root.position; this.yaw.rotation.y = Math.atan2(pos.x - r.x, pos.z - r.z); }
+  muzzle(v) { this.tip.getWorldPosition(v); }
+  update(dt) {
+    this.t += dt;
+    this.kick = Math.max(0, this.kick - dt * 4);
+    this.barrel.position.z = -this.kick * 0.6;
+    this.barrel.rotation.x = -0.32 - this.kick * 0.12 + (this.kick ? 0 : Math.sin(this.t * 1.6) * 0.015);
   }
 }
 
@@ -616,7 +760,8 @@ function syncTowers() {
     if (ta && ta.id !== t.id) { removeTowerActor(spot, ta); ta = null; }
     if (!ta) {
       const f = FRIENDS[t.id];
-      const actor = f.model === 'castle' ? new CastleActor() : new Actor(f.model, { tint: f.tint, clip: 'idle' });
+      const actor = f.model === 'castle' ? new CastleActor() : f.model === 'cannon' ? new CannonActor(f.tint) : new Actor(f.model, { tint: f.tint, clip: 'idle' });
+      if (actor.wear) actor.wear(bank.worn());
       actor.root.position.copy(SPOTS[spot]).setY(0.4);
       actor.root.userData.spotIndex = spot;
       scene.add(actor.root);
@@ -817,7 +962,7 @@ function showBuild(spotIndex) {
     up.onclick = () => { if (doAct({ k: 'up', s: spotIndex })) setTimeout(() => { if (pickedSpot === spotIndex) showBuild(spotIndex); }, 250); };
     host.append(up, sellButton(spotIndex, tower));
   } else {
-    for (const id of FRIEND_IDS) {
+    for (const id of [...FRIEND_IDS, ...bank.owned()]) {   // свои пушки из магазина — после подружек уровня
       const f = FRIENDS[id];
       const b = document.createElement('button');
       b.className = 'friend';
@@ -855,6 +1000,94 @@ function sellButton(spotIndex, tower) {
 }
 
 const hideBuild = () => { pickedSpot = -1; $('build').classList.remove('show'); highlight(-1); };
+
+/* ─────────────────── магазин: пушки и вещи для подружек ─────────────────── */
+function drawGold() { const g = $('gold'); if (g) g.textContent = bank.gold; }
+let shopTab = 'cannons';
+function shopRow(emoji, name, about, extra, btnText, btnDisabled, onClick, cls) {
+  const row = document.createElement('div');
+  row.className = 'shop-item' + (cls ? ' ' + cls : '');
+  row.innerHTML = `<span class="face">${emoji}</span><div class="info"><b>${name}</b><small>${about}</small>${extra ? `<small>${extra}</small>` : ''}</div>`;
+  const b = document.createElement('button');
+  b.className = 'buy';
+  b.textContent = btnText;
+  b.disabled = btnDisabled;
+  if (onClick) b.onclick = onClick;
+  row.append(b);
+  return row;
+}
+function openShop() {
+  hideBuild();
+  const list = $('shop-list');
+  list.innerHTML = '';
+  document.querySelectorAll('.shop-tab').forEach((t) => t.classList.toggle('on', t.dataset.tab === shopTab));
+  if (shopTab === 'cannons') {
+    const owned = bank.owned();
+    for (const id of CANNON_IDS) {
+      const f = FRIENDS[id], have = owned.includes(id);
+      list.append(shopRow(f.emoji, f.name, f.about, `урон ${f.damage} · дальность ${f.range} · на плиту 🐚 ${f.cost}`,
+        have ? '✓ есть' : `🪙 ${f.price}`, have || bank.gold < f.price, have ? null : () => {
+          if (bank.gold < f.price) return;
+          bank.gold -= f.price;
+          bank.own(id);
+          say(`Ура! ${f.name} теперь наша!`);
+          toast(`${f.emoji} ${f.name} куплена — ставь её на плиту`);
+          openShop();
+        }, have ? 'have' : ''));
+    }
+  } else {
+    const items = bank.items(), worn = bank.worn();
+    for (const id of Object.keys(ITEMS)) {
+      const it = ITEMS[id], have = items.includes(id);
+      if (id === 'secret') {
+        list.append(shopRow(have ? '🎉' : it.emoji, it.name, have ? 'открыт — подарок получен!' : it.about, '',
+          have ? '✓ открыт' : `🪙 ${it.price}`, have || bank.gold < it.price, have ? null : openSecret, have ? 'have' : 'secret'));
+      } else if (!have) {
+        list.append(shopRow(it.emoji, it.name, it.about, '', `🪙 ${it.price}`, bank.gold < it.price, () => {
+          if (bank.gold < it.price) return;
+          bank.gold -= it.price;
+          bank.ownItem(id);
+          bank.setWorn([...new Set([...bank.worn(), id])]);   // купил — сразу надели
+          say(`${it.name} — красота!`);
+          toast(`${it.emoji} ${it.name}: подружки уже надели`);
+          dressAll();
+          openShop();
+        }));
+      } else {
+        const on = worn.includes(id);
+        list.append(shopRow(it.emoji, it.name, on ? 'надето на всех подружек' : 'лежит в шкафу', '', on ? 'Снять' : 'Надеть', false, () => {
+          bank.setWorn(on ? worn.filter((x) => x !== id) : [...worn, id]);
+          dressAll();
+          openShop();
+        }, 'have'));
+      }
+    }
+  }
+  $('shop-gold').textContent = bank.gold;
+  drawGold();
+  $('shop').classList.add('show');
+}
+function openSecret() {
+  const it = ITEMS.secret;
+  if (bank.gold < it.price) return;
+  bank.gold -= it.price;
+  bank.ownItem('secret');
+  bank.gold += 1000;
+  say('Поздравляю! Ты открыла секрет! Вот тебе тысяча золотых!');
+  $('secret-box').classList.add('show');
+  for (const ta of towerActors.values()) sparks(ta.actor.root.position, 14);
+  openShop();
+}
+function dressAll() {
+  const worn = bank.worn();
+  for (const ta of towerActors.values()) if (ta.actor.wear) ta.actor.wear(worn);
+}
+$('btn-shop').onclick = openShop;
+$('shop-close').onclick = () => $('shop').classList.remove('show');
+$('shop').onclick = (e) => { if (e.target.id === 'shop') $('shop').classList.remove('show'); };
+document.querySelectorAll('.shop-tab').forEach((b) => (b.onclick = () => { shopTab = b.dataset.tab; openShop(); }));
+$('secret-ok').onclick = () => $('secret-box').classList.remove('show');
+drawGold();
 
 function highlight(index) {
   spotMeshes.forEach((d, i) => {
@@ -1002,7 +1235,9 @@ function handleEvents(events) {
         toast(`🌊 Волна ${ev[1]}${ev[2] ? ' — большая тень!' : ''}`);
         break;
       case 'c':
-        toast(`✨ Волна ${ev[1]} прошла! Ракушек +${ev[2]}`);
+        bank.gold += 10;   // золото за каждую выстоянную волну — на магазин пушек и вещей
+        drawGold();
+        toast(`✨ Волна ${ev[1]} прошла! Ракушек +${ev[2]}, 🪙 +10`);
         audio.setLevel(0);
         audio.sfx('clear');
         say('Молодец!');
@@ -1082,6 +1317,7 @@ function afterSimEvents() {
 
 let finished = false;
 function finish(won, tails) {
+  if (won) { bank.gold += 50; drawGold(); }   // пройденный уровень — 50 золота
   if (finished) return;
   finished = true;
   const stars = won ? starsFor(tails) : 0;
@@ -1476,7 +1712,7 @@ function fitCamera() {
 }
 
 const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
-const need = [...new Set([level.enemy, ...FRIEND_IDS.map((id) => FRIENDS[id].model)])];
+const need = [...new Set([level.enemy, ...FRIEND_IDS.map((id) => FRIENDS[id].model)])].filter((m) => m !== 'cannon');   // пушка рисуется кодом
 const jobs = [];
 for (const kind of need) {
   if (MODELS[kind].stages) MODELS[kind].stages.forEach((url, i) => jobs.push({ url, ok: (gltf) => { castleStages[i] = gltf.scene; } }));

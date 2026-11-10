@@ -22,6 +22,7 @@
   <div class="hud-left">
     <div class="stat big" id="tails-box"><span id="tails">🎀🎀🎀🎀🎀</span></div>
     <div class="stat" title="Мои ракушки">🐚 <b id="shells">0</b></div>
+    <button class="stat shop-btn" id="btn-shop" type="button" title="Магазин: золото копится за волны и уровни">🛒 Магазин · 🪙 <b id="gold">0</b></button>
     <div class="stat" id="lives-box" title="Жизни персонажа: удар стоит жизнь, а побеждённый монстр их даёт" hidden>❤️ <b id="lives">10</b></div>
   </div>
   <div class="hud-center">
@@ -53,6 +54,23 @@
 <div id="combo" hidden></div>
 
 <div id="build"></div>
+<div id="shop" role="dialog" aria-label="Магазин">
+  <div class="shop-card">
+    <div class="shop-head"><h2>🛒 Магазин</h2><span class="shop-have">🪙 <b id="shop-gold">0</b></span><button id="shop-close" class="round" type="button" title="Закрыть">✕</button></div>
+    <div class="shop-tabs"><button class="shop-tab on" type="button" data-tab="cannons">💥 Пушки</button><button class="shop-tab" type="button" data-tab="items">👒 Персонажам</button></div>
+    <p class="shop-hint">Золото 🪙 — 10 за каждую волну и 50 за пройденный уровень. Покупки остаются навсегда.</p>
+    <div id="shop-list"></div>
+  </div>
+</div>
+<div id="secret-box" role="dialog" aria-label="Секрет">
+  <div class="secret-card">
+    <div class="secret-burst">🎉🎁🎉</div>
+    <h2>Поздравляем!</h2>
+    <p>Ты открыла <b>Секрет</b>! Внутри — подарок:</p>
+    <div class="secret-gift">🪙 +1000 золота</div>
+    <button id="secret-ok" class="huge" type="button">Ура!</button>
+  </div>
+</div>
 <div id="toast"></div>
 
 <div id="wait-host"><div class="tail-spin">🎀</div><p>Ждём ведущего игры…</p></div>
