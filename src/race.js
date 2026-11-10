@@ -10,6 +10,7 @@ import { Runner, Joystick, loadRunnerModel } from './runner.js';
 import { Net, me as myProfile, COLORS } from './net.js';
 import { MAPS, progress } from './levels.js';
 import { createRadio } from './radio.js';
+import { EXPERIMENTAL } from './flags.js';
 import { RALLY_LEN, rallyState, rallySave, rallyLevel, rallyFinish, rallyNextRound } from './rally.js';
 import { audio } from './audio.js';
 import { TUBE_R, radiusAt, buildTrack, sample, barAngle, newRacer, stepRacer, botInput, routeOf, fire, stepShot, shotHits, zap, botAims, worldAt, SHOT, mudBomb, BOMB } from './race-sim.js';
@@ -712,7 +713,7 @@ if (net) {
     for (const b of s.bm || []) if (b && typeof b.id === 'string' && b.from !== myId) applyBomb(b.from, b.id);
   });
   net.on('closed', (m) => { toast(m.msg, 6000); setTimeout(() => { location.href = 'lobby.html'; }, 2500); });
-  setupVoice();
+  if (EXPERIMENTAL) setupVoice();   // голос — только в экспериментальной сборке/на сайте с ?exp (в Play-сборке микрофона нет)
   net.on('kicked', (m) => toast(m.msg, 6000));
   net.on('down', () => toast('Связь пропала — переподключаемся…', 2000));
   net.on('welcome', () => net.send({ t: 'join', code: ROOM }));
