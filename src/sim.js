@@ -28,6 +28,12 @@ export const FRIEND_KEYS = Object.keys(FRIENDS);   // индекс в снимк
  * уровня любая волна сгорала мгновенно (см. docs/BALANCE.md). Теперь урон/с на ракушку почти постоянный.
  */
 export const GROW = { damage: 1.6, rate: 0.9, range: 2.5, cost: 1.8, first: 0.8 };
+/**
+ * Особый удар (1.14.0): с 3-го роста каждый 6-й выстрел подружки — особый: крупный искрящийся шар,
+ * у Теи замедление держится дольше, у Никши брызги шире. Урон не растёт (mult 1): уровни настроены впритык,
+ * и даже ×1.25 на каждый 6-й выстрел поднимал средний запас одиночной игры с 42 до 61 % (tools/balance.mjs).
+ */
+export const SPECIAL = { level: 3, every: 6, mult: 1, slowFor: 2, splashK: 1.2 };
 export function towerStats(id, level) {
   const f = FRIENDS[id];
   let damage = f.damage, range = f.range, rate = f.rate, upCost = Math.round(f.cost * GROW.first), spent = f.cost;
@@ -559,9 +565,12 @@ export class Sim {
         if (Math.hypot(e.x - s.x, e.z - s.z) <= t.range && (!target || e.rem < target.rem)) target = e;
       }
       if (target) {
-        this.shots.push({ x: s.x, y: 3.6, z: s.z, target, damage: t.damage, slow: t.slow, splash: t.splash, owner: t.owner });
+        t.n = (t.n || 0) + 1;
+        const power = t.level >= SPECIAL.level && t.n % SPECIAL.every === 0;
+        this.shots.push({ x: s.x, y: 3.6, z: s.z, target, damage: power ? Math.round(t.damage * SPECIAL.mult) : t.damage, slow: t.slow,
+          slowFor: power ? SPECIAL.slowFor : 1.6, splash: power && t.splash ? t.splash * SPECIAL.splashK : t.splash, owner: t.owner });
         t.cool = t.rate;
-        this.emit(['f', spot, target.id]);
+        this.emit(power ? ['f', spot, target.id, 1] : ['f', spot, target.id]);
       }
     }
 
@@ -575,7 +584,7 @@ export class Sim {
         e.hp -= s.damage;
         e.lastBy = s.owner;
         e.heroBy = 0;                  // добила башня — награда ракушками
-        if (s.slow) e.slow = 1.6;
+        if (s.slow) e.slow = Math.max(e.slow || 0, s.slowFor || 1.6);
         if (s.splash) {
           for (const o of this.enemies) {
             if (o !== e && Math.hypot(o.x - e.x, o.z - e.z) < s.splash * 1.6) { o.hp -= s.damage * 0.5; o.lastBy = s.owner; o.heroBy = 0; }
