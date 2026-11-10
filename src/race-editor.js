@@ -91,6 +91,8 @@ const PAINT = {
   bar({ base, g }) { base('#3b3d58', '#1e1f33'); g.fillStyle = '#ffc23c'; g.fillRect(1, 6, 14, 4); g.fillStyle = '#b86a00'; g.fillRect(7, 5, 2, 6); },
   rocks({ base, px, noise }) { base('#7a6e62', '#453d35'); for (let i = 0; i < 26; i++) px(1 + Math.floor(noise() * 14), 1 + Math.floor(noise() * 14), noise() < 0.5 ? '#a89a8c' : '#544a40'); },
   boost({ base, g }) { base('#7a5a00', '#4a3600'); g.fillStyle = '#ffe14a'; for (const [x, y, w] of [[8, 2, 3], [7, 4, 3], [6, 6, 4], [5, 8, 6], [7, 10, 2], [6, 12, 2]]) g.fillRect(x, y, w, 2); },
+  fan({ base, g }) { base('#0f5f78', '#06303e'); g.fillStyle = '#9ff6ff'; g.fillRect(7, 2, 2, 12); g.fillRect(2, 7, 12, 2); g.fillStyle = '#ffffff'; g.fillRect(6, 6, 4, 4); g.fillStyle = '#5ff0ff'; for (const [x, y] of [[11, 3], [12, 4], [13, 5]]) g.fillRect(x, y, 2, 1); },
+  fanb({ base, g }) { base('#7a2a12', '#45140a'); g.fillStyle = '#ffc2a8'; g.fillRect(7, 2, 2, 12); g.fillRect(2, 7, 12, 2); g.fillStyle = '#ffffff'; g.fillRect(6, 6, 4, 4); g.fillStyle = '#ff6a3c'; for (const [x, y] of [[1, 3], [2, 4], [3, 5]]) g.fillRect(x, y, 2, 1); },
   fork({ base, g }) { base('#6a3dc4', '#371c78'); g.fillStyle = '#eadcff'; g.fillRect(3, 7, 5, 2); g.fillRect(7, 3, 2, 10); g.fillRect(7, 3, 6, 2); g.fillRect(7, 11, 6, 2); },
 };
 const CANVAS = BLOCKS.map((b) => pixelCanvas(PAINT[b.id]));

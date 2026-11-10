@@ -165,5 +165,29 @@ for (const d of EXAMPLES) {
   }
   check(botAims({ s: 100, x: 0, y: 0 }, [{ s: 160, x: 1, y: 0 }]) && !botAims({ s: 100, x: 0, y: 0 }, [{ s: 160, x: 6, y: 0 }]), 'бот целится только в того, кто на линии впереди');
 }
+/* вентиляторы: попутный разгоняет выше максимума, встречный тормозит; бот пролетает трассу с ветром; код читается */
+{
+  const mk = (t) => { const b = new Map(); b.set(keyOf(1, 0, 1), T.start); let c = line(b, [1, 0, 1], [1, 0, 0], 3); c = line(b, c, [1, 0, 0], 1, t); c = line(b, c, [1, 0, 0], 12); b.set(keyOf(c[0] + 1, 0, 1), T.finish); return { a: 3, b: 4, d: 'easy', blocks: b }; };
+  const fly = (t, at) => {
+    const course = buildCourse(mk(t)), p = newRacer(0), inp = { x: 0, y: 0, brake: false };
+    let tt = 0, vmax = 0, vmin = 1e9, wind = 0;
+    const fanS = at ?? course.routes[0].obstacles.find((o) => o.kind === 'fan' || o.kind === 'fanb')?.s ?? -1;
+    while (!p.fin && tt < 120) {
+      tt += DT;
+      for (const [e, w] of stepRacer(p, inp, course, tt, DT)) if (e === 'wind') wind = w;
+      if (fanS > 0 && p.s > fanS && p.s < fanS + 60) { vmax = Math.max(vmax, p.v); vmin = Math.min(vmin, p.v); }
+    }
+    return { fin: p.fin, vmax, vmin, wind, top: course.routes[0].def.vmax, fanS };
+  };
+  const tail = fly(T.fan), head = fly(T.fanb), plain = fly(T.path, tail.fanS);
+  check(tail.wind === 1 && tail.vmax > tail.top * 1.05, `попутный ветер: ${tail.vmax.toFixed(0)} при максимуме ${tail.top}`);
+  check(head.wind === -1 && head.vmin < plain.vmin * 0.8, `встречный ветер: падение до ${head.vmin.toFixed(0)} (без ветра ${plain.vmin.toFixed(0)})`);
+  check(tail.fin && head.fin && tail.fin < plain.fin && head.fin > plain.fin, `время: попутный ${tail.fin.toFixed(1)} < без ветра ${plain.fin.toFixed(1)} < встречный ${head.fin.toFixed(1)}`);
+  const d = mk(T.fanb), back = decode(encode(d));
+  check(back && back.blocks.get(keyOf(5, 0, 1)) === T.fanb, 'вентилятор сохраняется в коде трассы');
+  const course = buildCourse(mk(T.fan)), bp = newRacer(1), bi = { x: 0, y: 0, brake: false };
+  let bt = 0; while (!bp.fin && bt < 150) { bt += DT; botInput(bp, course, bt, { miss: 0.3, vmaxK: 0.85, sloppy: 0.5, seed: 3 }, bi); stepRacer(bp, bi, course, bt, DT, 0.85); }
+  check(bp.fin > 0, `бот долетает через вентилятор: ${bp.fin.toFixed(1)} с`);
+}
 console.log(fails ? `\nошибок: ${fails}` : '\nошибок: 0');
 process.exit(fails ? 1 : 0);

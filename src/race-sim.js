@@ -13,6 +13,8 @@ const BRAKE = 55;
 const THRUST = 52;                        // ускорение от руля
 const GRIP_SLOW = 7, GRIP_FAST = 1.15;    // сцепление на малой и на полной скорости
 export const START_S = 30;
+/** Вентиляторы: сколько секунд дует после прохода, сила и пределы скорости (доли vmax). */
+export const WIND = { time: 1.6, push: 34, top: 1.35, low: 0.35 };
 
 export function rng(seed) {
   let a = seed >>> 0;
@@ -113,6 +115,8 @@ export function fillObstacle(o, a, r, hole) {
   } else if (kind === 'boost') {
     const off = r() * (R - 5);
     o.x = Math.cos(a) * off; o.y = Math.sin(a) * off; o.hole = 3.2;
+  } else if (kind === 'fan' || kind === 'fanb') {
+    o.w = kind === 'fan' ? 1 : -1;     // вентилятор на всё сечение: +1 дует в спину, −1 навстречу
   }
   return o;
 }
@@ -167,7 +171,7 @@ export function newRacer(lane = 0) {
 
 /**
  * Один шаг. input: { x, y, brake } в [-1, 1]; vmaxK — множитель скорости (боты).
- * Возвращает список событий: ['hit'] | ['boost'] | ['wall'].
+ * Возвращает список событий: ['hit'] | ['boost'] | ['wall'] | ['wind', ±1].
  */
 export function stepRacer(p, input, course, t, dt, vmaxK = 1) {
   const ev = [];
@@ -193,6 +197,12 @@ export function stepRacer(p, input, course, t, dt, vmaxK = 1) {
   p.gun = Math.max(0, (p.gun || 0) - dt);
   p.zap = Math.max(0, (p.zap || 0) - dt);
   p.mud = Math.max(0, (p.mud || 0) - dt);
+  // ветер от вентилятора: попутный разгоняет выше обычного максимума, встречный тормозит
+  if ((p.wind || 0) > 0) {
+    p.wind = Math.max(0, p.wind - dt);
+    if (p.windK > 0) p.v = Math.min(track.def.vmax * WIND.top, p.v + WIND.push * dt);
+    else p.v = Math.max(track.def.vmax * WIND.low, p.v - WIND.push * dt);
+  }
   // стенка: скользим вдоль неё и теряем скорость
   const lim = TUBE_R - BODY_R, r = Math.hypot(p.x, p.y);
   if (r > lim) {
@@ -225,6 +235,12 @@ export function stepRacer(p, input, course, t, dt, vmaxK = 1) {
   const obs = track.obstacles;
   while (p.next < obs.length && obs[p.next].s <= p.s) {
     const o = obs[p.next];
+    if (o.kind === 'fan' || o.kind === 'fanb') {
+      p.next++;
+      p.wind = WIND.time; p.windK = o.w || (o.kind === 'fan' ? 1 : -1);
+      ev.push(['wind', p.windK]);
+      continue;
+    }
     if (o.kind === 'boost') {
       p.next++;
       if (Math.hypot(p.x - o.x, p.y - o.y) < o.hole) { p.v = Math.min(track.def.vmax * 1.3, p.v * 1.14 + 6); ev.push(['boost']); }
@@ -330,6 +346,7 @@ export function safePoint(o, t, x, y) {
 export function botInput(p, course, t, skill, out) {
   const track = routeOf(course, p), obs = track.obstacles;
   let o = obs[p.next];
+  for (let j = p.next; o && (o.kind === 'fan' || o.kind === 'fanb'); ) o = obs[++j];   // через ветер летим как есть
   // ускоритель берём, только если следующая за ним преграда далеко
   if (o && o.kind === 'boost') {
     const after = obs[p.next + 1];

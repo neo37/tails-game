@@ -20,6 +20,8 @@ export const BLOCKS = [
   { id: 'rocks', name: 'Камни', icon: '🪨', kind: 'rocks' },
   { id: 'boost', name: 'Ускоритель', icon: '⚡', kind: 'boost' },
   { id: 'fork', name: 'Развилка', icon: '🔀' },
+  { id: 'fan', name: 'Попутный ветер', icon: '🌬️', kind: 'fan' },
+  { id: 'fanb', name: 'Встречный ветер', icon: '🌀', kind: 'fanb' },
 ];
 export const T = Object.fromEntries(BLOCKS.map((b, i) => [b.id, i]));
 export const DIFFS = {
@@ -378,7 +380,7 @@ export function buildCourse(design) {
 /** Трасса «по шагам»: E W N S U D с числом — шаги; s f g h b r o x — тип текущего блока; @имя запомнить, >имя вернуться. */
 function sketch(a, b, d, from, script) {
   const blocks = new Map(), marks = {};
-  const TYPES = { s: T.start, f: T.finish, g: T.gate, h: T.half, b: T.bar, r: T.rocks, o: T.boost, x: T.fork };
+  const TYPES = { s: T.start, f: T.finish, g: T.gate, h: T.half, b: T.bar, r: T.rocks, o: T.boost, x: T.fork, w: T.fan, v: T.fanb };
   const MOVE = { E: [1, 0, 0], W: [-1, 0, 0], N: [0, 0, 1], S: [0, 0, -1], U: [0, 1, 0], D: [0, -1, 0] };
   let c = from.slice();
   blocks.set(keyOf(...c), T.path);

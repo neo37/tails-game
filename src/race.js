@@ -231,7 +231,41 @@ function planeAt(s, track = course.routes[0]) {
 }
 
 /* преграды */
-const spinners = [], tumblers = [];
+const spinners = [], tumblers = [], fans = [];
+/** Вентилятор на всё сечение тоннеля: рама, лопасти и бегущие стрелки по направлению ветра. w = +1 попутный, −1 встречный. */
+function makeFan(w) {
+  const col = w > 0 ? 0x5ff0ff : 0xff6a3c;
+  const g = new THREE.Group();
+  g.add(new THREE.Mesh(new THREE.TorusGeometry(TUBE_R - 0.4, 0.45, 10, 64), new THREE.MeshStandardMaterial({ color: 0xdfe8ff, metalness: 0.6, roughness: 0.35 })));
+  g.add(new THREE.Mesh(new THREE.CircleGeometry(TUBE_R - 0.4, 48), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.1, side: THREE.DoubleSide, depthWrite: false })));
+  const blades = new THREE.Group();
+  const bladeMat = new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.38, side: THREE.DoubleSide, depthWrite: false });
+  for (let i = 0; i < 4; i++) {
+    const b = new THREE.Mesh(new THREE.PlaneGeometry(TUBE_R * 0.92, 2.6), bladeMat);
+    b.position.x = TUBE_R * 0.46; b.rotation.x = 0.5;
+    const arm = new THREE.Group(); arm.rotation.z = (i * Math.PI) / 2; arm.add(b); blades.add(arm);
+  }
+  blades.add(new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, 1, 20).rotateX(Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: 0.5, roughness: 0.3 })));
+  g.add(blades);
+  // стрелки: летят вперёд (попутный) или навстречу (встречный)
+  const arrows = new THREE.Group();
+  const sh = new THREE.Shape(); sh.moveTo(-1.4, 0); sh.lineTo(1.4, 0); sh.lineTo(0, 2.2 * w); sh.closePath();
+  const am = new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthWrite: false });
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2, m = new THREE.Mesh(new THREE.ShapeGeometry(sh), am);
+    m.position.set(Math.cos(a) * 7.5, Math.sin(a) * 7.5, 0); m.rotation.x = -Math.PI / 2;   // острие смотрит по ветру (вперёд по тоннелю — это −z плоскости)
+    arrows.add(m);
+  }
+  g.add(arrows);
+  fans.push({ blades, arrows, w });
+  return g;
+}
+let windChip = 0;
+function windFx(w) {
+  audio.sfx(w > 0 ? 'hop' : 'hurt', w > 0 ? 1.2 : 0.4);
+  if (performance.now() - windChip > 1500) { windChip = performance.now(); toast(w > 0 ? '🌬️ Попутный ветер — быстрее!' : '🌀 Встречный ветер — тормозит!', 900); }
+  if (w < 0) camS.shake = Math.max(camS.shake, 0.15);
+}
 {
   const wall = (c) => new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0.62, side: THREE.DoubleSide, depthWrite: false });
   const edge = new THREE.MeshBasicMaterial({ color: 0x8dffb0 });
@@ -268,6 +302,8 @@ const spinners = [], tumblers = [];
         g.add(m);
         tumblers.push(m);
       }
+    } else if (o.kind === 'fan' || o.kind === 'fanb') {
+      g.add(makeFan(o.w || (o.kind === 'fan' ? 1 : -1)));
     } else if (o.kind === 'boost') {
       const t = new THREE.Mesh(new THREE.TorusGeometry(o.hole, 0.32, 8, 32), boostMat);
       t.position.set(o.x, o.y, 0);
@@ -493,7 +529,6 @@ function applyBomb(from, id, visual = false) {
   audio.sfx('hurt', 0.6); audio.sfx('hit', 0.5);
   if (from === myId) toast('💣 Грязевая бомба! Все соперники в грязи', 1600);
   else { toast(`💣 ${who ? who.name : 'Кто-то'} взорвал грязевую бомбу!`, 1800); camS.shake = 0.45; }
-  $('fire').classList.toggle('has-bomb', !mine.p.bombUsed);
 }
 function drawBombs(dt) {
   for (let i = bombFx.length - 1; i >= 0; i--) {
@@ -552,10 +587,6 @@ const keys = new Set();
 let brakeHold = false;
 addEventListener('keydown', (e) => {
   if (/^(KeyW|KeyA|KeyS|KeyD|ArrowUp|ArrowDown|ArrowLeft|ArrowRight|Space|ShiftLeft|ShiftRight)$/.test(e.code)) { keys.add(e.code); e.preventDefault(); }
-  if ((e.code === 'KeyF' || e.code === 'KeyE' || e.code === 'Enter') && state === 'go') {
-    if (!e.repeat) { shoot(mine); keyHold = performance.now(); } else if (performance.now() - keyHold > 800) bomb(mine);
-  }
-  if (e.code === 'KeyB' && state === 'go') bomb(mine);
 });
 addEventListener('keyup', (e) => keys.delete(e.code));
 addEventListener('blur', () => keys.clear());
@@ -565,21 +596,7 @@ addEventListener('blur', () => keys.clear());
   z.addEventListener('pointerdown', (e) => { e.preventDefault(); z.setPointerCapture(e.pointerId); set(true); });
   for (const n of ['pointerup', 'pointercancel', 'lostpointercapture']) z.addEventListener(n, () => set(false));
 }
-// огонь в момент касания: второй палец рулит джойстиком, и click браузер не пришлёт. Держишь 0,8 с — грязевая бомба (одна на трассу)
-{
-  const f = $('fire');
-  let hold = 0;
-  f.addEventListener('pointerdown', (e) => {
-    e.preventDefault(); e.stopPropagation();
-    if (state !== 'go') return;
-    shoot(mine);
-    f.setPointerCapture(e.pointerId);
-    if (!mine.p.bombUsed) { f.classList.add('charging'); clearTimeout(hold); hold = setTimeout(() => { f.classList.remove('charging'); bomb(mine); }, 800); }
-  });
-  for (const n of ['pointerup', 'pointercancel', 'lostpointercapture']) f.addEventListener(n, () => { clearTimeout(hold); f.classList.remove('charging'); });
-  f.classList.add('has-bomb');
-}
-let keyHold = 0;
+// стрельбы и бомб в гонке больше нет (1.13.0): вместо них на трассах свои вентиляторы
 const input = { x: 0, y: 0, brake: false };
 function readInput() {
   input.x = (keys.has('KeyD') || keys.has('ArrowRight') ? 1 : 0) - (keys.has('KeyA') || keys.has('ArrowLeft') ? 1 : 0);
@@ -813,6 +830,7 @@ function onEvents(ev) {
     if (e === 'wall') { audio.sfx('hit'); camS.shake = Math.max(camS.shake, 0.22); }
     if (e === 'boost') { audio.sfx('hop', 1.4); toast('🚀 Ускорение!', 700); }
     if (e === 'fork') audio.sfx('jump');
+    if (e === 'wind') windFx(ev.find((q) => q[0] === 'wind')[1]);
     if (e === 'fin') {
       markFinish(myId, mine.p.fin);
       if (net && !isHost) net.send({ t: 'act', a: { k: 'fin', t: +mine.p.fin.toFixed(2) } });
@@ -834,15 +852,6 @@ function step(dt) {
       botInput(r.p, course, raceT, r.skill, r.inp ||= { x: 0, y: 0, brake: false });
       const ev = stepRacer(r.p, r.inp, course, raceT, h, r.skill.vmaxK);
       if (ev.some(([e]) => e === 'fin')) markFinish(r.id, r.p.fin);
-      // бот бросает свою бомбу один раз, когда отстаёт от лидера
-      r.bombAt ??= 12 + Math.random() * 30;
-      if (!r.p.bombUsed && raceT > r.bombAt && [...riders.values()].some((q) => q !== r && q.p.s > r.p.s + 40)) bomb(r);
-      // бот стреляет реже игрока и не всегда: ловкий чаще
-      r.aimT = (r.aimT ?? 1.5 - r.id * 0.4) - h;
-      if (r.aimT <= 0 && botAims(r.p, [...riders.values()].map((q) => q.p))) {
-        r.aimT = 2.2 + Math.random() * 2.5 + r.skill.miss * 4;
-        shoot(r);
-      }
     }
     stepShots(h);
   }
@@ -874,12 +883,12 @@ function tick() {
   }
   for (const r of riders.values()) r.place(r.p.s, r.p.x, r.p.y, r.p.vx, r.p.vy, r.p.v, dt);
   drawShots(dt);
-  $('fire').classList.toggle('cool', (mine.p.gun || 0) > 0);
   const sp = mine.p, spTrack = routeOf(course, sp);
   const nextFork = spTrack.forks[sp.nf || 0];
   if (nextFork && !sp.forkTold && nextFork.s - sp.s < Math.max(70, sp.v * 1.6)) { sp.forkTold = true; toast('🔀 Развилка: рули в нужную сторону!', 1800); setTimeout(() => { sp.forkTold = false; }, 3000); }
   for (const s of spinners) s.hub.rotation.z = barAngle(s.o, raceT);
   for (const m of tumblers) { m.rotation.x += dt * 0.6; m.rotation.y += dt * 0.4; }
+  for (const f of fans) { f.blades.rotation.z += dt * 7 * f.w; f.arrows.position.z = -(((raceT * 9 * f.w) % 6 + 6) % 6 - 3); }
 
   // камера за спиной: чуть отстаёт в сечении, поэтому занос виден
   const k = Math.min(1, dt * 6);
@@ -959,11 +968,7 @@ $('place-of').textContent = riders.size;
 tick();
 if (replay) toast(`📼 Повтор: ${replay.name}`, 2500);
 else {
-  toast(matchMedia('(pointer: coarse)').matches ? 'Лети пальцем слева, справа — тормоз, 🔫 — стрелять: попадание замедляет!' : 'WASD или стрелки — лететь, пробел — тормоз, F — стрелять: попадание замедляет!', 3500);
-  if (!localStorage.getItem('tg.tip.bomb')) {          // разовое предупреждение о новой бомбе
-    localStorage.setItem('tg.tip.bomb', '1');
-    setTimeout(() => toast(`Новое: 💣 держи «Огонь»${matchMedia('(pointer: coarse)').matches ? '' : ' (или B)'} — грязевая бомба замедлит всех! Одна на трассу.`, 4500), 3600);
-  }
+  toast(matchMedia('(pointer: coarse)').matches ? 'Лети пальцем слева, справа — тормоз. 🌬️ попутный ветер разгоняет, 🌀 встречный тормозит!' : 'WASD или стрелки — лететь, пробел — тормоз. 🌬️ попутный ветер разгоняет, 🌀 встречный тормозит!', 3500);
 }
 if (qs.has('debug')) window.__race = { riders, get mine() { return mine; }, get state() { return state; }, get track() { return routeOf(course, mine.p); }, course, finished, joy, camera, get raceT() { return raceT; }, get isHost() { return isHost; }, shots, shoot, bomb,
   saveReplay, get recorder() { return recorder; }, get playT() { return playT; }, replay };
