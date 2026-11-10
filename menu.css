@@ -157,3 +157,40 @@ input.code { text-transform: uppercase; letter-spacing: 5px; width: 6.6em; flex:
 
 /* четыре карты в ряд, на телефоне лёжа тоже */
 @media (orientation: landscape) { .home-grid #maps { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+
+/* ---- 1.14: неоновое «Ралли» и чистые иконки ---- */
+#pick { display: flex; flex-direction: column; }
+.rally { position: relative; display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 6px 22px; margin: 4px 0 14px;
+  padding: 16px 22px; border-radius: 22px; text-decoration: none; color: #fff; overflow: hidden; isolation: isolate;
+  background: linear-gradient(100deg, #12062e 0%, #2a0b52 45%, #3b0a4a 100%); border: 1.5px solid rgba(255, 63, 180, .65);
+  box-shadow: 0 0 0 1px rgba(63, 243, 255, .15) inset, 0 10px 34px rgba(255, 63, 180, .28); transition: transform .15s, box-shadow .15s; }
+.rally::before { content: ''; position: absolute; inset: 0; z-index: -1; opacity: .55;
+  background: repeating-linear-gradient(100deg, transparent 0 46px, rgba(63, 243, 255, .08) 46px 48px),
+              radial-gradient(ellipse at 85% 50%, rgba(255, 63, 180, .45), transparent 60%); animation: rally-scan 6s linear infinite; }
+@keyframes rally-scan { to { background-position: 480px 0, 0 0; } }
+.rally:hover { transform: translateY(-2px); box-shadow: 0 0 0 1px rgba(63, 243, 255, .3) inset, 0 14px 44px rgba(255, 63, 180, .45); }
+.rally-k { font: 900 italic clamp(30px, 4.4vw, 46px)/1 system-ui, sans-serif; letter-spacing: .06em; text-transform: uppercase;
+  background: linear-gradient(90deg, #3ff3ff, #ff3fb4); -webkit-background-clip: text; background-clip: text; color: transparent;
+  filter: drop-shadow(0 0 10px rgba(255, 63, 180, .55)); }
+.rally-t { font-size: 15px; color: #d9d3ff; line-height: 1.3; }
+.rally-b { font: 700 14px system-ui, sans-serif; color: #3ff3ff; white-space: nowrap; }
+.rally-b:empty { display: none; }
+.rally-go { font: 800 18px system-ui, sans-serif; padding: 12px 22px; border-radius: 14px; background: linear-gradient(90deg, #ff3fb4, #ff7a3c); color: #fff;
+  box-shadow: 0 0 18px rgba(255, 63, 180, .6); white-space: nowrap; }
+.rally-go::after { content: ' ›'; }
+.home-grid { flex: 1; min-height: 0; }
+.choice .ico { width: 54px; height: 54px; fill: none; stroke: currentColor; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; opacity: .9; margin-bottom: 4px; }
+.choice .name { letter-spacing: .01em; }
+@media (max-width: 720px) {
+  .rally { grid-template-columns: 1fr auto; padding: 14px 16px; }
+  .rally-t { grid-column: 1 / -1; grid-row: 2; font-size: 13.5px; }
+  .rally-b { grid-row: 3; }
+}
+@media (prefers-reduced-motion: reduce) { .rally::before { animation: none; } }
+/* телефон вертикально: меню прокручивается, карточки не сжимаются, метка «в прошлый раз» — справа */
+@media (max-aspect-ratio: 1/1) {
+  html, body { overflow: auto; }
+  .home-grid, .choices, .rally { flex: none; }
+  .choices .choice { min-height: 148px; }
+  .choice .badge { left: auto; right: 8px; }
+}

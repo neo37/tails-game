@@ -9,6 +9,8 @@ import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { Runner, Joystick, loadRunnerModel } from './runner.js';
 import { Net, me as myProfile, COLORS } from './net.js';
 import { MAPS, progress } from './levels.js';
+import { createRadio } from './radio.js';
+import { RALLY_LEN, rallyState, rallySave, rallyLevel, rallyFinish, rallyNextRound } from './rally.js';
 import { audio } from './audio.js';
 import { TUBE_R, radiusAt, buildTrack, sample, barAngle, newRacer, stepRacer, botInput, routeOf, fire, stepShot, shotHits, zap, botAims, worldAt, SHOT, mudBomb, BOMB } from './race-sim.js';
 import { buildCourse, decode as decodeTrack, W as FIELD, CELL as FIELD_CELL } from './race-design.js';
@@ -63,6 +65,14 @@ if (ROOM) {
   $('btn-home').addEventListener('click', () => net.send({ t: 'leave' }));
 } else if (!(replay ? replay.src.code : qs.get('code'))) {
   def = MAPS.race.levels.find((l) => l.id === Number(replay ? replay.src.level : qs.get('level'))) || MAPS.race.levels[0];
+}
+// ралли: 12 трасс подряд, шаг берётся из адреса (?rally=1&step=N), время и места копятся в sessionStorage
+const RALLY = !ROOM && !replay && qs.has('rally') ? rallyState(qs.get('step') === '0' && !qs.has('cont')) : null;
+if (RALLY) {
+  RALLY.step = Math.max(0, Math.min(RALLY_LEN - 1, Number(qs.get('step')) || 0));
+  if (RALLY.step === 0) { RALLY.times = []; RALLY.places = []; }
+  rallySave(RALLY);
+  def = rallyLevel(RALLY);
 }
 // своя трасса из блоков (race-design.js): несколько путей; у готовых трасс путь один
 let course;
@@ -613,10 +623,23 @@ $('btn-voice').onclick = () => {
   localStorage.setItem('tails.voice', voiceOn ? 'on' : 'off');
   $('btn-voice').textContent = voiceOn ? '🔊' : '🔇';
   audio.setOn(voiceOn);
+  radio.setOn(voiceOn);
 };
 audio.setOn(voiceOn);
 for (const n of ['pointerdown', 'keydown']) addEventListener(n, () => audio.unlock(), { capture: true });
-audio.music(true);
+// радио: mp3 из админки по очереди; нет треков — встроенная музыка
+const radio = createRadio({ onTitle: (title, n, total) => {
+  const c = $('radio-chip');
+  if (!c) return;
+  c.querySelector('.rt').textContent = title;
+  c.title = `Трек ${n} из ${total} · нажми — следующий`;
+  c.hidden = false;
+  c.classList.remove('flash'); void c.offsetWidth; c.classList.add('flash');
+} });
+radio.setOn(voiceOn);
+radio.start().then((ok) => { if (!ok) audio.music(true); });
+if (RALLY) setTimeout(() => toast(`🏁 Ралли · трасса ${RALLY.step + 1} из ${RALLY_LEN}: ${def.name}`, 2600), 400);
+document.getElementById('radio-chip')?.addEventListener('click', () => radio.next());
 
 /* ── сеть ── */
 const ready = new Set();
@@ -689,6 +712,7 @@ if (net) {
     for (const b of s.bm || []) if (b && typeof b.id === 'string' && b.from !== myId) applyBomb(b.from, b.id);
   });
   net.on('closed', (m) => { toast(m.msg, 6000); setTimeout(() => { location.href = 'lobby.html'; }, 2500); });
+  setupVoice();
   net.on('kicked', (m) => toast(m.msg, 6000));
   net.on('down', () => toast('Связь пропала — переподключаемся…', 2000));
   net.on('welcome', () => net.send({ t: 'join', code: ROOM }));
@@ -789,6 +813,7 @@ function showFinish() {
   if (state === 'done') return;
   state = 'done';
   const place = finished.findIndex((f) => f.id === myId) + 1;
+  if (RALLY) { rallyStep(place); return; }
   const stars = place === 1 ? 3 : place === 2 ? 2 : 1;
   if (!ROOM && !def.custom) {
     progress.setStars('race', def.id, stars);
@@ -809,6 +834,98 @@ function showFinish() {
     : `<a class="huge" href="race.html?level=${def.id}">🔁 Ещё раз</a>${nextOk ? `<a class="huge rose" href="race.html?level=${def.id + 1}">🚀 Следующая</a>` : ''}<a class="huge ghost" href="map.html?map=race">Трассы</a>`;
   if (recorder) $('ov-buttons').insertAdjacentHTML('beforeend', `<a class="huge ghost" href="race.html?replay=${recorder.id}${qs.has('debug') ? '&debug' : ''}" id="btn-replay">📼 Повтор</a>`);
   $('btn-replay')?.addEventListener('click', saveReplay);
+  $('overlay').classList.add('show');
+}
+/** Голос в командной гонке: 🎤 — 3 секунды с микрофона, слышат только игроки этой комнаты (друзья по коду). */
+function setupVoice() {
+  const b = document.createElement('button');
+  b.id = 'btn-mic'; b.className = 'mic-btn'; b.type = 'button'; b.textContent = '🎤 3 с';
+  b.title = 'Записать 3 секунды — услышат друзья в этой гонке';
+  document.body.append(b);
+  let busy = false, cool = 0;
+  b.onclick = async () => {
+    if (busy) return;
+    if (Date.now() < cool) { toast(`Ещё ${Math.ceil((cool - Date.now()) / 1000)} с`, 900); return; }
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') { toast('Микрофон здесь недоступен'); return; }
+    busy = true;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+      const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : '';
+      const rec = new MediaRecorder(stream, mime ? { mimeType: mime, audioBitsPerSecond: 32000 } : { audioBitsPerSecond: 32000 });
+      const parts = [];
+      rec.ondataavailable = (e) => { if (e.data && e.data.size) parts.push(e.data); };
+      rec.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        const buf = new Uint8Array(await new Blob(parts).arrayBuffer());
+        let bin = '';
+        for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+        const a = btoa(bin);
+        if (a.length > 60000) toast('Слишком громко и долго — попробуй ещё раз', 1600);
+        else { net.send({ t: 'voice', a, mime: (rec.mimeType || mime).startsWith('audio/mp4') ? 'audio/mp4' : 'audio/webm' }); toast('🎤 Друзья услышат', 1200); }
+        busy = false; cool = Date.now() + 8000;
+        b.classList.remove('rec'); b.textContent = '🎤 3 с';
+      };
+      rec.start();
+      b.classList.add('rec');
+      let left = 3;
+      b.textContent = '● 3';
+      const t = setInterval(() => { left--; b.textContent = left > 0 ? '● ' + left : '…'; if (left <= 0) clearInterval(t); }, 1000);
+      setTimeout(() => { if (rec.state !== 'inactive') rec.stop(); }, 3000);
+    } catch (e) {
+      busy = false;
+      toast('Нет доступа к микрофону', 1600);
+    }
+  };
+  // входящие: по очереди, с небольшой задержкой
+  const queue = [];
+  let playing = false;
+  const playNext = () => {
+    if (playing || !queue.length) return;
+    playing = true;
+    const { a, mime, name } = queue.shift();
+    const au = new Audio(`data:${mime};base64,${a}`);
+    toast(`🔊 ${name}`, 3200);
+    const done = () => { playing = false; setTimeout(playNext, 400); };
+    au.onended = done; au.onerror = done;
+    au.play().catch(done);
+  };
+  net.on('voice', (m) => {
+    if (typeof m.a !== 'string') return;
+    const r = riders.get(m.from);
+    queue.push({ a: m.a, mime: m.mime === 'audio/mp4' ? 'audio/mp4' : 'audio/webm', name: r ? r.name : 'Друг' });
+    setTimeout(playNext, 700);
+  });
+}
+
+/** Ралли: короткий итог трассы и сам переход на следующую; после 12-й — общий итог и новый круг. */
+function rallyStep(place) {
+  audio.sfx(place === 1 ? 'win' : 'clear');
+  radio.save();
+  const my = finished.find((f) => f.id === myId)?.t || raceT;
+  const next = rallyFinish(RALLY, my, place);
+  drawTable();
+  const go = (url, sec, label) => {
+    let left = sec;
+    $('ov-buttons').innerHTML = `<a class="huge rose" href="${url}" id="rally-go">${label} · ${left}</a><a class="huge ghost" href="index.html">Выйти</a>`;
+    const t = setInterval(() => {
+      left--;
+      const b = $('rally-go');
+      if (b) b.textContent = `${label} · ${Math.max(0, left)}`;
+      if (left <= 0) { clearInterval(t); radio.save(); location.replace(url); }
+    }, 1000);
+  };
+  if (next) {
+    $('ov-title').textContent = `🏁 Трасса ${RALLY.step + 1} из ${RALLY_LEN} · ${place === 1 ? 'первое место!' : 'место ' + place}`;
+    $('ov-stars').textContent = `Время ${fmt(my)} · всего ${fmt(RALLY.times.reduce((a, b) => a + (b || 0), 0))}`;
+    go(next, 3, '🚀 Следующая трасса');
+  } else {
+    const total = RALLY.times.reduce((a, b) => a + (b || 0), 0);
+    const cnt = (n) => RALLY.places.filter((p) => p === n).length;
+    $('ov-title').textContent = '🏆 Ралли пройдено!';
+    $('ov-stars').textContent = `${RALLY_LEN} трасс · общее время ${fmt(total)} · 🥇${cnt(1)} 🥈${cnt(2)} 🥉${cnt(3)}`;
+    try { const best = +localStorage.getItem('tails.rally.best') || 0; if (!best || total < best) localStorage.setItem('tails.rally.best', String(total)); } catch (e) { /* */ }
+    go(rallyNextRound(RALLY), 12, '🔁 Новое ралли');
+  }
   $('overlay').classList.add('show');
 }
 function drawTable() {

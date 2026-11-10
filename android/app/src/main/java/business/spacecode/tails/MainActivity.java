@@ -29,6 +29,19 @@ import androidx.webkit.WebViewAssetLoader;
 
 /** «Хвосты»: игра из assets/www по https://appassets.androidplatform.net (localStorage и модули работают как на сайте). */
 public class MainActivity extends Activity {
+    private static final int REQ_MIC = 71;
+    private android.webkit.PermissionRequest pendingMic;
+
+    @Override
+    public void onRequestPermissionsResult(int code, String[] perms, int[] res) {
+        super.onRequestPermissionsResult(code, perms, res);
+        if (code != REQ_MIC || pendingMic == null) return;
+        if (res.length > 0 && res[0] == android.content.pm.PackageManager.PERMISSION_GRANTED)
+            pendingMic.grant(new String[]{android.webkit.PermissionRequest.RESOURCE_AUDIO_CAPTURE});
+        else pendingMic.deny();
+        pendingMic = null;
+    }
+
     private static final String HOME = "https://appassets.androidplatform.net/www/index.html";
     private WebView web;
 
@@ -74,7 +87,23 @@ public class MainActivity extends Activity {
             }
         });
         // без WebChromeClient WebView молча отвечает «нет» на confirm() и не показывает alert(): покупки в мастерской не проходили
-        web.setWebChromeClient(new android.webkit.WebChromeClient());
+        web.setWebChromeClient(new android.webkit.WebChromeClient() {
+            // 🎤 в командной гонке: страница просит микрофон — спрашиваем разрешение Android и только тогда даём
+            @Override
+            public void onPermissionRequest(final android.webkit.PermissionRequest req) {
+                boolean audio = false;
+                for (String r : req.getResources()) if (android.webkit.PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(r)) audio = true;
+                if (!audio) { req.deny(); return; }
+                runOnUiThread(() -> {
+                    if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                        req.grant(new String[]{android.webkit.PermissionRequest.RESOURCE_AUDIO_CAPTURE});
+                    } else {
+                        pendingMic = req;
+                        requestPermissions(new String[]{android.Manifest.permission.RECORD_AUDIO}, REQ_MIC);
+                    }
+                });
+            }
+        });
         web.addJavascriptInterface(new AdsBridge(), "TailsAds");
         setContentView(web);
         immersive();

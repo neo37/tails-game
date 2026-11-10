@@ -48,3 +48,18 @@ body.replay #fire, body.replay #brake-zone, body.replay #joy, body.replay #drift
   #joy { left: 18px; bottom: 16px; }
 }
 #ov-buttons a.huge { text-decoration: none; display: inline-block; }
+
+/* радио гонок: что сейчас играет (нажатие — следующий трек) */
+.radio-chip { position: fixed; left: 50%; bottom: calc(52px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 30; display: flex; align-items: center; gap: 8px;
+  max-width: min(70vw, 420px); padding: 6px 14px 6px 10px; border-radius: 999px; border: 1px solid rgba(63,243,255,.55); background: rgba(10,6,30,.72);
+  color: #e9fbff; font: 700 13px/1.2 system-ui, sans-serif; letter-spacing: .02em; box-shadow: 0 0 16px rgba(63,243,255,.35), inset 0 0 12px rgba(255,63,180,.18); cursor: pointer; }
+.radio-chip .rt { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.radio-chip.flash { animation: radio-in .9s ease both; }
+@keyframes radio-in { 0% { opacity: 0; transform: translateX(-50%) translateY(10px); box-shadow: 0 0 40px rgba(255,63,180,.9); } 100% { opacity: 1; } }
+
+/* голос в командной гонке */
+.mic-btn { position: fixed; right: calc(14px + env(safe-area-inset-right)); bottom: calc(150px + env(safe-area-inset-bottom)); z-index: 31; min-width: 76px; min-height: 52px;
+  border-radius: 999px; border: 1.5px solid rgba(255,63,180,.7); background: rgba(14,8,34,.78); color: #fff; font: 800 16px system-ui, sans-serif;
+  box-shadow: 0 0 14px rgba(255,63,180,.4); cursor: pointer; }
+.mic-btn.rec { background: #e11d48; border-color: #fff; animation: mic-pulse .8s ease-in-out infinite; }
+@keyframes mic-pulse { 50% { box-shadow: 0 0 0 10px rgba(225,29,72,.25); } }

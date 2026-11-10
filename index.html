@@ -16,16 +16,22 @@
     <a class="pill video" href="https://youtube.com/shorts/52dhWEpxzok" target="_blank" rel="noopener">▶ Видео</a>
     <a class="pill me" id="me" href="profile.html"></a>
   </header>
+  <a class="rally" href="race.html?rally=1&amp;step=0" id="c-rally">
+    <span class="rally-k">Ралли</span>
+    <span class="rally-t">12 трасс подряд без остановок · тоннель то сужается, то раздувается · в эфире радио</span>
+    <span class="rally-b" id="rally-best"></span>
+    <span class="rally-go">Старт</span>
+  </a>
   <div class="home-grid">
     <div class="choices" id="maps"></div>
     <div class="choices small">
       <a class="choice team" href="lobby.html" id="c-team">
-        <span class="big-emoji">👫</span>
+        <svg class="ico" viewBox="0 0 48 48" aria-hidden="true"><circle cx="17" cy="16" r="6"/><circle cx="32" cy="18" r="5"/><path d="M6 38c1.5-7 6-11 11-11s9.5 4 11 11"/><path d="M27 29c1.6-1.3 3.3-2 5-2 4.3 0 8 3.4 9.4 9.6"/></svg>
         <span class="name">Командная игра</span>
         <span class="about">До четырёх друзей, общий домик</span>
       </a>
       <a class="choice make" href="editor.html" id="c-editor">
-        <span class="big-emoji">🛠</span>
+        <svg class="ico" viewBox="0 0 48 48" aria-hidden="true"><path d="M10 38l3-10L31 10a4 4 0 0 1 6 0l1 1a4 4 0 0 1 0 6L20 35z"/><path d="M28 13l7 7"/><path d="M10 38h28"/></svg>
         <span class="name">Создать уровень</span>
         <span class="about">Строй дорожку, зови привидений</span>
       </a>
@@ -47,17 +53,19 @@ document.getElementById('maps').innerHTML = Object.values(MAPS).filter((m) => !m
   return `<a class="choice${m.id === last ? ' last' : ''}" href="map.html?map=${m.id}" data-map="${m.id}">
     ${m.id === last ? '<span class="badge">в прошлый раз</span>' : ''}
     <img src="${m.preview}" alt="">
-    <span class="name">${m.emoji} ${m.name}</span>
+    <span class="name">${m.name}</span>
     <span class="about">${m.about}</span>
     <span class="meta">${m.levels.length} уровней · ⭐ ${stars} из ${max}</span>
   </a>`;
 }).join('') + (() => {
   const n = myLevels.list().length;
   return `<a class="choice mine${last === 'custom' ? ' last' : ''}" href="map.html?map=custom" id="c-mine">
-    <span class="big-emoji">🛠</span><span class="name">Мои уровни</span>
+    <svg class="ico" viewBox="0 0 48 48" aria-hidden="true"><rect x="8" y="8" width="13" height="13" rx="3"/><rect x="27" y="8" width="13" height="13" rx="3"/><rect x="8" y="27" width="13" height="13" rx="3"/><path d="M33.5 28v11M28 33.5h11"/></svg><span class="name">Мои уровни</span>
     <span class="about">${n ? 'Твои карты: играй и правь их' : 'Создай первую карту, и она появится здесь'}</span>
     <span class="meta">${n ? `Сохранено: ${n}` : 'Пока пусто'}</span></a>`;
 })();
+// лучшее время ралли
+try { const b = +localStorage.getItem('tails.rally.best'); if (b) document.getElementById('rally-best').textContent = `Рекорд ${Math.floor(b / 60)}:${String(Math.floor(b % 60)).padStart(2, '0')}`; } catch (e) { /* */ }
 // столько колонок, сколько карточек: без пустого места, когда карт меньше (Набережной в меню нет)
 { const el = document.getElementById('maps'); if (innerWidth > innerHeight) el.style.gridTemplateColumns = `repeat(${el.children.length}, minmax(0, 1fr))`; }
 </script>
