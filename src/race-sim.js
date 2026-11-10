@@ -29,7 +29,32 @@ export function rng(seed) {
 const smooth = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
 /**
- * def: { seed, length, vmax, drift, coil: [радиус, длина витка], sway, gap, kinds, hole }
+ * Радиус тоннеля меняется по длине: def.widen = [во сколько раз шире в самом широком месте, длина волны].
+ * У старта и финиша — обычный TUBE_R; в «экстремумах» — до widen[0] × TUBE_R (по умолчанию 3 диаметра).
+ * Преграды масштабируются вместе с сечением (o.k), поэтому их не объехать по широкой части.
+ */
+export function radiusProfile(def, total, r) {
+  const [max, wave] = def.widen || [3, 620];
+  if (max <= 1) return () => TUBE_R;
+  const ph = r() * 6.28, w = (2 * Math.PI) / wave, w2 = w * 0.37;
+  return (u) => {
+    const e = smooth(60, 260, u) * smooth(0, 220, def.length - u);   // у старта и у финиша — обычная труба
+    // две волны: широкие залы и узкие горловины чередуются неравномерно
+    const a = 0.5 + 0.5 * Math.sin(u * w + ph), b = 0.5 + 0.5 * Math.sin(u * w2 + ph * 1.7);
+    const bulge = Math.pow(a, 2.2) * (0.55 + 0.45 * b);
+    return TUBE_R * (1 + (max - 1) * e * bulge);
+  };
+}
+
+/** Радиус тоннеля в точке s. */
+export function radiusAt(track, s) {
+  if (!track.rad) return TUBE_R;
+  const f = Math.max(0, Math.min(track.n - 1.001, s / DS)), i = Math.floor(f), t = f - i;
+  return track.rad[i] * (1 - t) + track.rad[i + 1] * t;
+}
+
+/**
+ * def: { seed, length, vmax, drift, coil: [радиус, длина витка], sway, gap, kinds, hole, widen: [×, волна] }
  * Трасса из редактора (race-design.js) вместо coil задаёт curve(u) — точку оси по длине дуги — и готовые obstacles.
  */
 export function buildTrack(def) {
@@ -86,10 +111,15 @@ export function buildTrack(def) {
     bend[i * 2 + 1] = kx * up[j] + ky * up[j + 1] + kz * up[j + 2];
     bendMax = Math.max(bendMax, Math.hypot(bend[i * 2], bend[i * 2 + 1]));
   }
-  const track = { def, length: def.length, total, n, pos, tan, up, right, bend,
+  // радиус по длине (свой генератор: не сдвигаем случайные числа преград у старых трасс)
+  const rf = radiusProfile(def, total, rng((def.seed || 1) * 31 + 7));
+  const rad = new Float32Array(n);
+  for (let i = 0; i < n; i++) rad[i] = rf(i * DS);
+  const track = { def, length: def.length, total, n, pos, tan, up, right, bend, rad,
     // на полной скорости в самом крутом месте сила заноса = drift × сила руля: удержаться можно, но трудно
     // на своей трассе кривизна ограничена: один крутой угол не должен убирать занос с остальной трассы (его проходят с тормозом)
     cf: (def.drift * THRUST) / ((def.curve ? Math.min(bendMax, 1 / 40) : bendMax) * def.vmax * def.vmax), obstacles: def.obstacles || makeObstacles(def, r), forks: [] };
+  for (const o of track.obstacles) o.k = radiusAt(track, o.s) / TUBE_R;   // преграда растягивается вместе с сечением
   return track;
 }
 
@@ -152,11 +182,13 @@ export const barAngle = (o, t) => o.a + o.w * t;
 
 /** Задета ли преграда в точке (x, y) сечения в момент t. */
 export function hits(o, x, y, t) {
+  const k = o.k || 1, br = (BODY_R * 0.55) / k;   // в широкой части тоннеля преграда растянута в k раз
+  x /= k; y /= k;
   switch (o.kind) {
-    case 'gate': return Math.hypot(x - o.x, y - o.y) > o.hole - BODY_R * 0.55;
+    case 'gate': return Math.hypot(x - o.x, y - o.y) > o.hole - br;
     case 'half': return x * Math.cos(o.a) + y * Math.sin(o.a) > o.d;
-    case 'bar': { const b = barAngle(o, t); return Math.abs(-x * Math.sin(b) + y * Math.cos(b)) < o.hw + BODY_R * 0.55; }
-    case 'rocks': return o.rocks.some((k) => Math.hypot(x - k.x, y - k.y) < k.r + BODY_R * 0.55);
+    case 'bar': { const b = barAngle(o, t); return Math.abs(-x * Math.sin(b) + y * Math.cos(b)) < o.hw + br; }
+    case 'rocks': return o.rocks.some((q) => Math.hypot(x - q.x, y - q.y) < q.r + br);
     default: return false;
   }
 }
@@ -204,7 +236,7 @@ export function stepRacer(p, input, course, t, dt, vmaxK = 1) {
     else p.v = Math.max(track.def.vmax * WIND.low, p.v - WIND.push * dt);
   }
   // стенка: скользим вдоль неё и теряем скорость
-  const lim = TUBE_R - BODY_R, r = Math.hypot(p.x, p.y);
+  const lim = radiusAt(track, p.s) - BODY_R, r = Math.hypot(p.x, p.y);
   if (r > lim) {
     const nx = p.x / r, ny = p.y / r, out = p.vx * nx + p.vy * ny;
     p.x = nx * lim; p.y = ny * lim;
@@ -243,7 +275,7 @@ export function stepRacer(p, input, course, t, dt, vmaxK = 1) {
     }
     if (o.kind === 'boost') {
       p.next++;
-      if (Math.hypot(p.x - o.x, p.y - o.y) < o.hole) { p.v = Math.min(track.def.vmax * 1.3, p.v * 1.14 + 6); ev.push(['boost']); }
+      if (Math.hypot(p.x - o.x * (o.k || 1), p.y - o.y * (o.k || 1)) < o.hole * (o.k || 1)) { p.v = Math.min(track.def.vmax * 1.3, p.v * 1.14 + 6); ev.push(['boost']); }
       continue;
     }
     if (!hits(o, p.x, p.y, t)) { p.next++; continue; }
@@ -357,7 +389,9 @@ export function botInput(p, course, t, skill, out) {
     const mark = (o.s * 7919 + skill.seed * 104729) % 1000 / 1000;
     if (mark >= skill.miss || p.safe > 0 || p.v < 15) {   // зазевался — но после удара обязательно ищет проход
       const arrive = t + (o.s - p.s) / Math.max(p.v, 10);
-      [tx, ty] = safePoint(o, arrive, p.x, p.y);
+      const k = o.k || 1;
+      [tx, ty] = safePoint(o, arrive, p.x / k, p.y / k);
+      tx *= k; ty *= k;
     }
   }
   const b = [0, 0];

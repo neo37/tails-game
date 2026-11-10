@@ -10,7 +10,7 @@ import { Runner, Joystick, loadRunnerModel } from './runner.js';
 import { Net, me as myProfile, COLORS } from './net.js';
 import { MAPS, progress } from './levels.js';
 import { audio } from './audio.js';
-import { TUBE_R, buildTrack, sample, barAngle, newRacer, stepRacer, botInput, routeOf, fire, stepShot, shotHits, zap, botAims, worldAt, SHOT, mudBomb, BOMB } from './race-sim.js';
+import { TUBE_R, radiusAt, buildTrack, sample, barAngle, newRacer, stepRacer, botInput, routeOf, fire, stepShot, shotHits, zap, botAims, worldAt, SHOT, mudBomb, BOMB } from './race-sim.js';
 import { buildCourse, decode as decodeTrack, W as FIELD, CELL as FIELD_CELL } from './race-design.js';
 import { makeShip, addFlames } from './ships.js';
 import { parseKit, kitString, itemById } from './shop.js';
@@ -166,7 +166,7 @@ for (const route of course.routes) {
   const color = new THREE.Color();
   const hue = (f) => 0.53 + 0.34 * f;              // от голубого к малиновому
   const at = (i, a, out) => {
-    const j = i * 3, c = Math.cos(a) * TUBE_R, s = Math.sin(a) * TUBE_R;
+    const j = i * 3, R = track.rad ? track.rad[Math.min(i, track.n - 1)] : TUBE_R, c = Math.cos(a) * R, s = Math.sin(a) * R;   // радиус меняется по длине
     out[0] = track.pos[j] + track.right[j] * c + track.up[j] * s;
     out[1] = track.pos[j + 1] + track.right[j + 1] * c + track.up[j + 1] * s;
     out[2] = track.pos[j + 2] + track.right[j + 2] * c + track.up[j + 2] * s;
@@ -274,6 +274,7 @@ function windFx(w) {
   const boostMat = new THREE.MeshBasicMaterial({ color: 0xffe14a });
   for (const { track: route, o } of draws) {
     const g = planeAt(o.s, route);
+    if (o.k && o.k !== 1) g.scale.set(o.k, o.k, 1);   // в широкой части преграда растянута на всё сечение
     if (o.kind === 'gate') {
       const sh = new THREE.Shape();
       sh.absarc(0, 0, TUBE_R, 0, Math.PI * 2);
@@ -315,6 +316,7 @@ function windFx(w) {
   }
   // финиш: шахматная арка
   const fin = planeAt(track.length);
+  { const kf = radiusAt(track, track.length) / TUBE_R; if (kf !== 1) fin.scale.set(kf, kf, 1); }
   const cv = document.createElement('canvas');
   cv.width = cv.height = 128;
   const x = cv.getContext('2d');
