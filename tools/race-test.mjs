@@ -12,10 +12,11 @@ const DT = 1 / 60;
 
 function race(track, skill, lane = 0) {
   const p = newRacer(lane), inp = { x: 0, y: 0, brake: false };
+  for (const o of track.obstacles) o.brokenTill = 0;   // разбитые прошлым заездом снова целы
   let t = 0, hit = 0, wall = 0, maxSlip = 0;
   while (!p.fin && t < 300) {
     botInput(p, track, t, skill, inp);
-    for (const [e] of stepRacer(p, inp, track, t, DT, skill.vmaxK)) { if (e === 'hit') hit++; if (e === 'wall') wall++; }
+    for (const [e] of stepRacer(p, inp, track, t, DT, skill.vmaxK)) { if (e === 'crash') hit++; if (e === 'wall') wall++; }
     maxSlip = Math.max(maxSlip, p.slip);
     t += DT;
   }
@@ -51,7 +52,8 @@ for (const def of MAPS.race.levels) {
   check(pro.fin > 0 && pro.hit <= Math.max(2, tr.obstacles.length * 0.08), `аккуратный бот: ${pro.t.toFixed(1)} с, ударов ${pro.hit}, в стену ${pro.wall}, занос до ${(pro.maxSlip * 100).toFixed(0)}% силы руля`);
   check(pro.maxSlip < 1.25, 'даже на ускорителе занос можно перебороть почти всегда');
   const clumsy = race(tr, { miss: 0.45, vmaxK: 0.92, sloppy: 0.3, seed: 2 });
-  check(clumsy.fin > 0 && clumsy.t > pro.t + 3, `неловкий бот тоже финиширует и отстаёт: ${clumsy.t.toFixed(1)} с, ударов ${clumsy.hit}`);
+  // с ноября 2026 удар только замедляет (преграда рассыпается), поэтому отставание меньше, чем при отскоке
+  check(clumsy.fin > 0 && clumsy.t > pro.t + 2, `неловкий бот тоже финиширует и отстаёт: ${clumsy.t.toFixed(1)} с, ударов ${clumsy.hit}`);
 
   // разгон плавный: за кадр скорость меняется мало, максимум примерно через 15–30 с
   {

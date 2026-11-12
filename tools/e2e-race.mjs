@@ -42,7 +42,8 @@ const flying = (page) => page.waitForFunction(() => window.__race.state === 'go'
   await page.screenshot({ path: path.join(SHOTS, 'race-menu.png') });
   await page.goto(`${BASE}/map.html?map=race`);
   const lv = await page.$$eval('#levels .lvl', (els) => els.map((e) => [e.tagName, e.getAttribute('href')]));
-  check(lv.length === 11 && lv[0][1] === 'race.html?level=1' && lv[1][0] === 'DIV' && lv[10][1] === 'races.html', `10 трасс: новому игроку открыта первая, остальные по порядку (${lv.length})`);
+  // с 1.14.0 трасс 30 (+ ссылка на трассы игроков в конце)
+  check(lv.length === 31 && lv[0][1] === 'race.html?level=1' && lv[1][0] === 'DIV' && lv[30][1] === 'races.html', `30 трасс: новому игроку открыта первая, остальные по порядку (${lv.length})`);
   // кто уже играл до этой версии — у того открыто всё
   const ctx2 = await browser.createBrowserContext(), old = await ctx2.newPage();
   await old.goto(`${BASE}/style.css`);
@@ -102,8 +103,9 @@ const flying = (page) => page.waitForFunction(() => window.__race.state === 'go'
     return o.s;
   });
   await sleep(1500);
-  const after = await page.evaluate(() => [window.__race.mine.p.v, window.__race.mine.p.s]);
-  check(after[0] < 20 && after[1] <= hit, `преграда твёрдая: скорость ${after[0].toFixed(0)}, не пролетел сквозь неё`);
+  // с ноября 2026: преграда рассыпается, корабль немного теряет скорость, мигает и пролетает сквозь
+  const after = await page.evaluate((hs) => { const R = window.__race, o = R.track.obstacles.find((q) => q.kind === 'gate' && Math.abs(q.s - hs) < 0.01); return [R.mine.p.s, !!o && (o.brokenTill || 0) > 0]; }, hit);
+  check(after[1] && after[0] > hit, `удар: преграда рассыпалась, корабль пролетел дальше (${after[0].toFixed(0)} > ${hit.toFixed(0)})`);
 
   // финиш: занимаем первое место и открываем следующую трассу
   await page.evaluate(() => { const R = window.__race, m = R.mine.p; m.next = R.track.obstacles.length; m.s = R.track.length - 20; m.v = 60; });

@@ -70,13 +70,20 @@ for (const d of EXAMPLES) {
   skills.push({ miss: 0, vmaxK: 1, sloppy: 1, seed: 1 }, { miss: 0.6, vmaxK: 0.8, sloppy: 0.2, seed: 4 }, { miss: 0.3, vmaxK: 0.9, sloppy: 0.5, seed: 8 });
   for (const sk of skills) {
     const p = newRacer(sk.seed & 3), inp = { x: 0, y: 0, brake: false };
+    for (const rt of course.routes) for (const o of rt.obstacles) o.brokenTill = 0;   // разбитые прошлым ботом снова целы
     let t = 0, through = 0, hit = 0;
     while (!p.fin && t < 600) {
       botInput(p, course, t, sk, inp);
       const was = p.next, wasTr = routeOf(course, p);
-      for (const [e] of stepRacer(p, inp, course, t, DT, sk.vmaxK)) if (e === 'hit') hit++;
+      const ghost = (p.ghost || 0) > 0;
+      for (const [e] of stepRacer(p, inp, course, t, DT, sk.vmaxK)) if (e === 'crash') hit++;
       const tr = routeOf(course, p);
-      for (let i = was; i < p.next; i++) if (tr.obstacles[i].kind !== 'boost' && hits(tr.obstacles[i], p.x, p.y, t)) through++;
+      // с ноября 2026 удар разбивает преграду и делает корабль призраком: сквозь неё можно. Нельзя — сквозь целую без удара.
+      for (let i = was; i < p.next; i++) {
+        const o = tr.obstacles[i];
+        if (o.kind === 'boost' || ghost || (p.ghost || 0) > 0 || (o.brokenTill || 0) > t) continue;
+        if (hits(o, p.x, p.y, t)) through++;
+      }
       if (wasTr !== tr && p.s > tr.length) through++;
       t += DT;
     }

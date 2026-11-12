@@ -14,6 +14,13 @@ const THRUST = 52;                        // ускорение от руля
 const GRIP_SLOW = 7, GRIP_FAST = 1.15;    // сцепление на малой и на полной скорости
 export const START_S = 30;
 /** Вентиляторы: сколько секунд дует после прохода, сила и пределы скорости (доли vmax). */
+/**
+ * Удар: преграда рассыпается на куски, корабль теряет часть скорости и на ghost секунд становится «призраком» —
+ * мигает и пролетает сквозь преграды и другие корабли, пока осколки не пропадут. Разбитая преграда снова
+ * собирается через regrow секунд. Столкновение кораблей: оба становятся призраками, теряют немного скорости
+ * и расталкиваются в стороны.
+ */
+export const CRASH = { ghost: 1.8, keep: 0.62, regrow: 4.5, bumpKeep: 0.88, push: 9, bumpS: 2.4 };
 export const WIND = { time: 1.6, push: 34, top: 1.35, low: 0.35 };
 
 export function rng(seed) {
@@ -198,7 +205,7 @@ export const routeOf = (course, p) => (course.routes ? course.routes[p.route || 
 
 export function newRacer(lane = 0) {
   const a = (lane / 4) * Math.PI * 2 + Math.PI / 4;
-  return { s: START_S, x: Math.cos(a) * 4, y: Math.sin(a) * 4, vx: 0, vy: 0, v: 0, next: 0, stun: 0, safe: 0, scrape: 0, slip: 0, fin: 0 };
+  return { s: START_S, x: Math.cos(a) * 4, y: Math.sin(a) * 4, vx: 0, vy: 0, v: 0, next: 0, stun: 0, safe: 0, scrape: 0, slip: 0, fin: 0, ghost: 0 };
 }
 
 /**
@@ -229,6 +236,7 @@ export function stepRacer(p, input, course, t, dt, vmaxK = 1) {
   p.gun = Math.max(0, (p.gun || 0) - dt);
   p.zap = Math.max(0, (p.zap || 0) - dt);
   p.mud = Math.max(0, (p.mud || 0) - dt);
+  p.ghost = Math.max(0, (p.ghost || 0) - dt);
   // ветер от вентилятора: попутный разгоняет выше обычного максимума, встречный тормозит
   if ((p.wind || 0) > 0) {
     p.wind = Math.max(0, p.wind - dt);
@@ -278,22 +286,38 @@ export function stepRacer(p, input, course, t, dt, vmaxK = 1) {
       if (Math.hypot(p.x - o.x * (o.k || 1), p.y - o.y * (o.k || 1)) < o.hole * (o.k || 1)) { p.v = Math.min(track.def.vmax * 1.3, p.v * 1.14 + 6); ev.push(['boost']); }
       continue;
     }
-    if (!hits(o, p.x, p.y, t)) { p.next++; continue; }
-    if (p.safe <= 0) {                     // удар: отскок; пока прижат к преграде, удар не повторяется
-      p.v = Math.min(p.v * 0.25, 12);
-      p.stun = 0.2;
-      p.safe = 1.1;
-      p.s = o.s - 3;
-      ev.push(['hit', o.kind]);
-    } else {
-      p.v = Math.min(p.v, 7);
-      p.s = o.s - 0.5;
-    }
-    break;
+    // разбитая преграда пуста, а призрак проходит сквозь любую
+    if ((o.brokenTill || 0) > t || (p.ghost || 0) > 0 || !hits(o, p.x, p.y, t)) { p.next++; continue; }
+    // удар: преграда рассыпается, корабль чуть замедляется и становится призраком
+    const idx = p.next++;
+    o.brokenTill = t + CRASH.regrow;
+    p.v *= CRASH.keep;
+    p.ghost = CRASH.ghost;
+    ev.push(['crash', o.kind, p.route || 0, idx, p.x, p.y]);
   }
   if (!p.fin && p.s >= track.length) { p.fin = t; ev.push(['fin']); }
   if (p.s > track.total - 40) { p.s = track.total - 40; p.v = 0; }
   return ev;
+}
+
+/** Задели ли друг друга два корабля (один участок трассы, близко в сечении и вдоль оси), если оба не призраки. */
+export function touching(a, b) {
+  if ((a.ghost || 0) > 0 || (b.ghost || 0) > 0 || (a.route || 0) !== (b.route || 0)) return false;
+  return Math.abs(a.s - b.s) < CRASH.bumpS && Math.hypot(a.x - b.x, a.y - b.y) < BODY_R * 1.9;
+}
+
+/** Столкновение: оба призраки, немного медленнее, расталкиваются в сечении. local — каким кораблём управляем здесь. */
+export function bump(a, b, localA = true, localB = true) {
+  let nx = a.x - b.x, ny = a.y - b.y;
+  const l = Math.hypot(nx, ny) || 1;
+  if (l < 1e-3) { nx = 1; ny = 0; } else { nx /= l; ny /= l; }
+  for (const [p, sgn, local] of [[a, 1, localA], [b, -1, localB]]) {
+    p.ghost = CRASH.ghost;
+    if (!local) continue;
+    p.v *= CRASH.bumpKeep;
+    p.vx += nx * sgn * CRASH.push;
+    p.vy += ny * sgn * CRASH.push;
+  }
 }
 
 /* ── выстрелы: заряд летит вдоль тоннеля быстрее стрелка, попадание замедляет, преграды заряд гасят ── */
@@ -320,7 +344,7 @@ export function stepShot(sh, course, t, dt) {
   sh.s += sh.v * dt;
   sh.t += dt;
   for (const o of tr.obstacles) {
-    if (o.s > s0 && o.s <= sh.s && o.kind !== 'boost' && hits(o, sh.x, sh.y, t)) { sh.s = o.s; sh.dead = 'wall'; return; }
+    if (o.s > s0 && o.s <= sh.s && o.kind !== 'boost' && !((o.brokenTill || 0) > t) && hits(o, sh.x, sh.y, t)) { sh.s = o.s; sh.dead = 'wall'; return; }
   }
   if (sh.t > SHOT.life || sh.s > tr.length + 60) sh.dead = 'gone';
 }

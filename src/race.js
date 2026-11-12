@@ -13,7 +13,8 @@ import { createRadio } from './radio.js';
 import { EXPERIMENTAL } from './flags.js';
 import { RALLY_LEN, rallyState, rallySave, rallyLevel, rallyFinish, rallyNextRound } from './rally.js';
 import { audio } from './audio.js';
-import { TUBE_R, radiusAt, buildTrack, sample, barAngle, newRacer, stepRacer, botInput, routeOf, fire, stepShot, shotHits, zap, botAims, worldAt, SHOT, mudBomb, BOMB } from './race-sim.js';
+import { TUBE_R, radiusAt, buildTrack, sample, barAngle, newRacer, stepRacer, botInput, routeOf, fire, stepShot, shotHits, zap, botAims, worldAt, SHOT, mudBomb, BOMB, CRASH, touching, bump } from './race-sim.js';
+import { Debris } from './debris.js';
 import { buildCourse, decode as decodeTrack, W as FIELD, CELL as FIELD_CELL } from './race-design.js';
 import { makeShip, addFlames } from './ships.js';
 import { parseKit, kitString, itemById } from './shop.js';
@@ -277,6 +278,7 @@ function windFx(w) {
   if (performance.now() - windChip > 1500) { windChip = performance.now(); toast(w > 0 ? '🌬️ Попутный ветер — быстрее!' : '🌀 Встречный ветер — тормозит!', 900); }
   if (w < 0) camS.shake = Math.max(camS.shake, 0.15);
 }
+const BREAKS = new Set(['gate', 'half', 'bar', 'rocks']);   // что рассыпается при ударе (вентиляторы и ускорители — нет)
 {
   const wall = (c) => new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0.62, side: THREE.DoubleSide, depthWrite: false });
   const edge = new THREE.MeshBasicMaterial({ color: 0x8dffb0 });
@@ -286,6 +288,7 @@ function windFx(w) {
   for (const { track: route, o } of draws) {
     const g = planeAt(o.s, route);
     if (o.k && o.k !== 1) g.scale.set(o.k, o.k, 1);   // в широкой части преграда растянута на всё сечение
+    if (BREAKS.has(o.kind)) { o.mesh = g; o.scale0 = g.scale.clone(); }   // разбивается при ударе
     if (o.kind === 'gate') {
       const sh = new THREE.Shape();
       sh.absarc(0, 0, TUBE_R, 0, Math.PI * 2);
@@ -339,6 +342,61 @@ function windFx(w) {
   fin.add(new THREE.Mesh(new THREE.TorusGeometry(TUBE_R, 0.5, 10, 64), new THREE.MeshBasicMaterial({ color: 0xffffff })));
 }
 
+/* ── разбитые преграды и осколки ── */
+const debris = new Debris(scene);
+const broken = new Set();                 // преграды, которые сейчас разбиты и потом соберутся снова
+function obstacleColor(o) {
+  let c = 0xff3d6e;
+  o.mesh && o.mesh.traverse((m) => { if (m.isMesh && m.material && m.material.color && c === 0xff3d6e) c = m.material.color.getHex(); });
+  return c;
+}
+/** Преграда рассыпалась: прячем её, пускаем куски, через CRASH.regrow она соберётся. rider — кто врезался. */
+function shatter(routeIdx, idx, hx, hy, rider) {
+  const track = course.routes[routeIdx] || course.routes[0], o = track && track.obstacles[idx];
+  if (!o) return;
+  if (!((o.brokenTill || 0) > raceT)) o.brokenTill = raceT + CRASH.regrow;
+  if (o.mesh) { debris.obstacle(track, o, raceT, hx, hy, rider ? rider.p.v : def.vmax * 0.6, obstacleColor(o)); o.mesh.visible = false; broken.add(o); }
+  if (rider && !rider.isMe && !rider.skill) rider.p.ghost = CRASH.ghost;   // чужой: мигает у нас тоже
+}
+/** Корабли задели друг друга: оба мигают, от каждого летят осколки. */
+function crashShips(A, B) {
+  bump(A.p, B.p, !!(A.isMe || A.skill), !!(B.isMe || B.skill));
+  debris.ship(routeOf(course, A.p), A.p, new THREE.Color(A.color).getHex());
+  debris.ship(routeOf(course, B.p), B.p, new THREE.Color(B.color).getHex());
+  if (A.isMe || B.isMe) {
+    const other = A.isMe ? B : A;
+    audio.sfx('hurt', 0.7); audio.sfx('hit');
+    camS.shake = Math.max(camS.shake, 0.45);
+    toast(`💥 Столкнулся: ${other.name}`, 900);
+  }
+}
+/** Разбил сам: рассказать остальным, чтобы у них преграда тоже рассыпалась. */
+function sendBreak(routeIdx, idx, x, y) {
+  if (!net) return;
+  const m = { k: 'brk', id: `${myId}.k${++shotSeq}`, r: routeIdx, i: idx, x: +x.toFixed(1), y: +y.toFixed(1) };
+  seenShots.add(m.id);
+  if (isHost) relayBreaks.push({ ...m, from: myId, at: performance.now() }); else net.send({ t: 'act', a: m });
+}
+const relayBreaks = [];
+function applyBreak(m, from) {
+  if (!m || typeof m.id !== 'string' || m.id.length > 24 || seenShots.has(m.id) || from === myId) return;
+  if (![m.r, m.i, m.x, m.y].every(Number.isFinite)) return;
+  seenShots.add(m.id);
+  shatter(m.r, m.i, m.x, m.y, riders.get(from));
+}
+function drawBroken(dt) {
+  debris.step(dt, camera);
+  for (const o of broken) {
+    const left = (o.brokenTill || 0) - raceT;
+    if (left <= 0) { o.mesh.visible = true; o.mesh.scale.copy(o.scale0); broken.delete(o); continue; }
+    if (left < 0.6) {                      // собирается обратно
+      const k = 1 - left / 0.6;
+      o.mesh.visible = true;
+      o.mesh.scale.set(o.scale0.x * k, o.scale0.y * k, o.scale0.z);
+    }
+  }
+}
+
 /* ── персонажи ── */
 const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
 const loaded = new Set();
@@ -363,10 +421,36 @@ class Rider {
     const body = makeShip(ship, color, isMe ? 0xffffff : color, kit);
     r.root.add(body);
     this.flame = addFlames(body, color, kit);
+    // у каждого корабля свои материалы: прозрачность «призрака» не должна задевать чужие корабли
+    body.traverse((m) => { if (m.material && !Array.isArray(m.material)) m.material = m.material.clone(); });
+    this.body = body;
+    this.ghostOn = false;
     this.roll = 0; this.pitch = 0; this.yaw = 0;
     this.px = 0; this.py = 0; this.pz = 0;
     // чужой: цель из снимка
     this.net = null;
+  }
+
+  /** Призрак: полупрозрачный и мигает, пока не исчезнут осколки. */
+  ghost(g) {
+    const on = g > 0;
+    if (on !== this.ghostOn) {
+      this.ghostOn = on;
+      this.body.traverse((m) => {
+        const x = m.material;
+        if (!x || Array.isArray(x)) return;
+        if (on) {
+          if (x.userData.op === undefined) { x.userData.op = x.opacity; x.userData.tr = x.transparent; }
+          x.transparent = true;
+          x.opacity = x.userData.op * 0.42;
+        } else if (x.userData.op !== undefined) {
+          x.opacity = x.userData.op;
+          x.transparent = x.userData.tr;
+        }
+        x.needsUpdate = true;
+      });
+    }
+    this.body.visible = !on || Math.floor(g * 12) % 2 === 0;
   }
 
   /** Поставить в мир по (s, x, y) и наклонить по боковой скорости. */
@@ -629,7 +713,8 @@ $('btn-voice').onclick = () => {
 audio.setOn(voiceOn);
 for (const n of ['pointerdown', 'keydown']) addEventListener(n, () => audio.unlock(), { capture: true });
 // радио: mp3 из админки по очереди; нет треков — встроенная музыка
-const radio = createRadio({ onTitle: (title, n, total) => {
+const radio = createRadio({ onFail: () => { $('radio-chip') && ($('radio-chip').hidden = true); audio.music(true); },
+  onTitle: (title, n, total) => {
   const c = $('radio-chip');
   if (!c) return;
   c.querySelector('.rt').textContent = title;
@@ -664,7 +749,8 @@ function hostTick() {
   const now = performance.now();
   while (relay.length && now - relay[0].at > 1200) relay.shift();
   while (relayBombs.length && now - relayBombs[0].at > 3000) relayBombs.shift();
-  net.send({ t: 'snap', s: { left, pl, fin: finished, sh: relay.map(({ at, ...m }) => m), bm: relayBombs.map(({ at, ...m }) => m) } });
+  while (relayBreaks.length && now - relayBreaks[0].at > 1500) relayBreaks.shift();
+  net.send({ t: 'snap', s: { left, pl, fin: finished, sh: relay.map(({ at, ...m }) => m), bm: relayBombs.map(({ at, ...m }) => m), bk: relayBreaks.map(({ at, ...m }) => m) } });
   // все на связи долетели — комната закрыта для новых
   if (!hostTick.over && finished.length && room.players.filter((p) => p.online).every((p) => finished.some((f) => f.id === p.id))) {
     hostTick.over = true;
@@ -692,6 +778,10 @@ if (net) {
       if (r && r.net && [a.s, a.x, a.y, a.v].every(Number.isFinite)) Object.assign(r.net, { s: a.s, x: a.x, y: a.y, v: a.v, route: course.routes[a.r] ? a.r : 0 });
     }
     if (a.k === 'fin' && Number.isFinite(a.t)) markFinish(m.from, a.t);
+    if (a.k === 'brk') {
+      applyBreak(a, m.from);
+      if (isHost && typeof a.id === 'string' && a.id.length < 24) relayBreaks.push({ k: 'brk', id: a.id, r: a.r, i: a.i, x: a.x, y: a.y, from: m.from, at: performance.now() });
+    }
     if (a.k === 'bomb' && typeof a.id === 'string' && a.id.length < 24 && !riders.get(m.from)?.p.bombUsed) {
       applyBomb(m.from, a.id);
       if (isHost) relayBombs.push({ id: a.id, from: m.from, at: performance.now() });
@@ -711,6 +801,7 @@ if (net) {
     for (const f of s.fin || []) markFinish(f.id, f.t);
     for (const sh of s.sh || []) if (sh && typeof sh.id === 'string') remoteShot(sh, sh.from);
     for (const b of s.bm || []) if (b && typeof b.id === 'string' && b.from !== myId) applyBomb(b.from, b.id);
+    for (const k of s.bk || []) applyBreak(k, k && k.from);
   });
   net.on('closed', (m) => { toast(m.msg, 6000); setTimeout(() => { location.href = 'lobby.html'; }, 2500); });
   if (EXPERIMENTAL) setupVoice();   // голос — только в экспериментальной сборке/на сайте с ?exp (в Play-сборке микрофона нет)
@@ -945,7 +1036,15 @@ let lookReady = false;
 let wasCount = '';
 
 function onEvents(ev) {
-  for (const [e] of ev) {
+  for (const q of ev) {
+    const e = q[0];
+    if (e === 'crash') {                   // разбил преграду: куски, мигание, немного медленнее
+      shatter(q[2], q[3], q[4], q[5], mine);
+      sendBreak(q[2], q[3], q[4], q[5]);
+      audio.sfx('pop'); audio.sfx('hit', 0.8);
+      camS.shake = Math.max(camS.shake, 0.4);
+      toast('💥 Разнёс преграду!', 800);
+    }
     if (e === 'hit') { audio.sfx('hurt'); camS.shake = 0.5; toast('Ой! Врезался', 900); document.body.classList.add('hurt'); setTimeout(() => document.body.classList.remove('hurt'), 220); }
     if (e === 'wall') { audio.sfx('hit'); camS.shake = Math.max(camS.shake, 0.22); }
     if (e === 'boost') { audio.sfx('hop', 1.4); toast('🚀 Ускорение!', 700); }
@@ -972,6 +1071,14 @@ function step(dt) {
       botInput(r.p, course, raceT, r.skill, r.inp ||= { x: 0, y: 0, brake: false });
       const ev = stepRacer(r.p, r.inp, course, raceT, h, r.skill.vmaxK);
       if (ev.some(([e]) => e === 'fin')) markFinish(r.id, r.p.fin);
+      for (const q of ev) if (q[0] === 'crash') shatter(q[2], q[3], q[4], q[5], r);
+    }
+    // корабли задевают друг друга (свой, боты и чужие по последним известным местам)
+    const list = [...riders.values()];
+    for (let a = 0; a < list.length; a++) for (let b = a + 1; b < list.length; b++) {
+      const A = list[a], B = list[b];
+      if (A.p.fin || B.p.fin) continue;   // долетевшие уже не мешают
+      if (touching(A.p, B.p)) crashShips(A, B);
     }
     stepShots(h);
   }
@@ -985,7 +1092,7 @@ function tick() {
     const left = (goAt - performance.now()) / 1000;
     const label = left > 2 ? '3' : left > 1 ? '2' : left > 0 ? '1' : 'ЛЕТИМ!';
     if (label !== wasCount) { wasCount = label; $('count').textContent = label; $('count').hidden = false; audio.sfx(left > 0 ? 'jump' : 'wave'); }
-    if (left <= 0) { state = 'go'; raceT = 0; setTimeout(() => { $('count').hidden = true; }, 700); }
+    if (left <= 0) { state = 'go'; raceT = 0; for (const rt of course.routes) for (const o of rt.obstacles) o.brokenTill = 0; setTimeout(() => { $('count').hidden = true; }, 700); }
   }
   if (replay) replayTick(dt);
   else if (state === 'go' || state === 'done') step(dt);
@@ -1001,7 +1108,12 @@ function tick() {
     q.s += q.v * dt; p.v = q.v; p.vx = vx; p.vy = vy;
     if ((p.route || 0) !== (q.route || 0)) { p.route = q.route; p.s = q.s; p.x = q.x; p.y = q.y; }   // перешёл на другую ветку
   }
-  for (const r of riders.values()) r.place(r.p.s, r.p.x, r.p.y, r.p.vx, r.p.vy, r.p.v, dt);
+  for (const r of riders.values()) {
+    if (!r.isMe && !r.skill) r.p.ghost = Math.max(0, (r.p.ghost || 0) - dt);   // чужие: их симуляция у них, мигание у нас
+    r.place(r.p.s, r.p.x, r.p.y, r.p.vx, r.p.vy, r.p.v, dt);
+    r.ghost(r.p.ghost || 0);
+  }
+  drawBroken(dt);
   drawShots(dt);
   const sp = mine.p, spTrack = routeOf(course, sp);
   const nextFork = spTrack.forks[sp.nf || 0];
@@ -1090,5 +1202,5 @@ if (replay) toast(`📼 Повтор: ${replay.name}`, 2500);
 else {
   toast(matchMedia('(pointer: coarse)').matches ? 'Лети пальцем слева, справа — тормоз. 🌬️ попутный ветер разгоняет, 🌀 встречный тормозит!' : 'WASD или стрелки — лететь, пробел — тормоз. 🌬️ попутный ветер разгоняет, 🌀 встречный тормозит!', 3500);
 }
-if (qs.has('debug')) window.__race = { riders, get mine() { return mine; }, get state() { return state; }, get track() { return routeOf(course, mine.p); }, course, finished, joy, camera, get raceT() { return raceT; }, get isHost() { return isHost; }, shots, shoot, bomb,
+if (qs.has('debug')) window.__race = { debris, broken, CRASH, get raceT() { return raceT; }, riders, get mine() { return mine; }, get state() { return state; }, get track() { return routeOf(course, mine.p); }, course, finished, joy, camera, get raceT() { return raceT; }, get isHost() { return isHost; }, shots, shoot, bomb,
   saveReplay, get recorder() { return recorder; }, get playT() { return playT; }, replay };

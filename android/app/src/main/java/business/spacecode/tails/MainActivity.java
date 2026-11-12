@@ -172,6 +172,8 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onPause() {
+        // звук игры (Web Audio + радио) — на паузу явно: WebView.onPause не всегда останавливает <audio>
+        web.evaluateJavascript("window.__appPause&&window.__appPause()", null);
         web.onPause();
         super.onPause();
     }
@@ -180,6 +182,7 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         web.onResume();
+        web.evaluateJavascript("window.__appResume&&window.__appResume()", null);
     }
 
     @SuppressWarnings("deprecation")

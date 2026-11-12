@@ -132,7 +132,16 @@ export function renderBar(ctx, d, t, bar, level = 0) {
   if (level >= 2) for (let i = 0; i < 4; i++) tone(ctx, d, t + i * beat, { type: 'sawtooth', f0: note(ch[0] - 12), dur: 0.2, vol: 0.13 });
 }
 
-const GAP = { shoot: 0.09, pop: 0.05, shell: 0.12, hit: 0.05, hurt: 0.12 };   // частые звуки не сливаются в кашу
+const GAP = { shoot: 0.09, pop: 0.05, shell: 0.12, hit: 0.05, hurt: 0.12 };
+
+/* Пауза/продолжение всего звука по сигналу Android-обёртки (сворачивание, звонок): MainActivity зовёт
+   window.__appPause() / __appResume(). На вебе то же делает visibilitychange. */
+const lifecycle = { pause: new Set(), resume: new Set() };
+export function onAppLifecycle(pause, resume) { lifecycle.pause.add(pause); lifecycle.resume.add(resume); }
+if (typeof window !== 'undefined') {
+  window.__appPause = () => lifecycle.pause.forEach((f) => { try { f(); } catch (e) { /* */ } });
+  window.__appResume = () => lifecycle.resume.forEach((f) => { try { f(); } catch (e) { /* */ } });
+}   // частые звуки не сливаются в кашу
 
 class GameAudio {
   constructor() { this.ctx = null; this.on = true; this.level = 0; this.bar = 0; this.next = 0; this.playing = false; this.last = {}; this.log = null; }
@@ -144,8 +153,9 @@ class GameAudio {
     this.master = this.ctx.createDynamicsCompressor();
     this.master.connect(this.ctx.destination);
     this.sfxBus = this.ctx.createGain(); this.sfxBus.gain.value = 0.8; this.sfxBus.connect(this.master);
-    this.musicBus = this.ctx.createGain(); this.musicBus.gain.value = 0.32; this.musicBus.connect(this.master);
+    this.musicBus = this.newMusicBus();
     document.addEventListener('visibilitychange', () => { if (!this.ctx) return; if (document.hidden) this.ctx.suspend(); else this.ctx.resume(); });
+    onAppLifecycle(() => this.ctx && this.ctx.suspend(), () => this.ctx && !document.hidden && this.ctx.resume());
     this.timer = setInterval(() => this.schedule(), 200);
   }
 
@@ -158,9 +168,37 @@ class GameAudio {
     renderSfx(this.ctx, name, now, this.sfxBus, k);
   }
 
-  music(on) { this.playing = on; if (on && this.ctx) this.next = 0; }
+  newMusicBus() {
+    const b = this.ctx.createGain();
+    b.gain.value = this.on ? 0.32 : 0;
+    b.connect(this.master);
+    return b;
+  }
+
+  /** Музыка вкл/выкл. Повторное включение (каждая волна) не перезапускает такты — иначе они накладывались.
+   *  Выключение сразу глушит уже запланированные на ~0,6 с вперёд ноты: старая шина плавно гаснет и отключается. */
+  music(on) {
+    if (on === this.playing) return;
+    this.playing = on;
+    if (!this.ctx) return;
+    if (on) { this.next = 0; return; }
+    const old = this.musicBus, t = this.ctx.currentTime;
+    old.gain.cancelScheduledValues(t);
+    old.gain.setValueAtTime(old.gain.value, t);
+    old.gain.linearRampToValueAtTime(0, t + 0.08);
+    setTimeout(() => { try { old.disconnect(); } catch (e) { /* */ } }, 200);
+    this.musicBus = this.newMusicBus();
+  }
   setLevel(n) { this.level = n; if (this.log) this.log.push([performance.now() / 1000, 'music', n]); }
-  setOn(v) { this.on = v; if (this.master) this.musicBus.gain.value = v ? 0.32 : 0; }
+  setOn(v) {
+    this.on = v;
+    if (!this.master) return;
+    const t = this.ctx.currentTime, g = this.musicBus.gain;
+    g.cancelScheduledValues(t);
+    g.setValueAtTime(g.value, t);
+    g.linearRampToValueAtTime(v ? 0.32 : 0, t + 0.06);   // без щелчка
+    if (v) this.next = 0;                                 // включили звук — музыка с ближайшей доли, без «дыры»
+  }
 
   schedule() {
     if (!this.playing || !this.on || this.ctx.state !== 'running') return;
