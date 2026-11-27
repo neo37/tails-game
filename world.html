@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Хвосты — открытый космос</title>
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="play.css">
+<link rel="stylesheet" href="race.css">
+<link rel="stylesheet" href="world.css">
+<script type="importmap">
+{ "imports": {
+    "three": "./vendor/three/build/three.module.js",
+    "three/addons/": "./vendor/three/examples/jsm/"
+} }
+</script>
+</head>
+<body class="runner-on">
+<canvas id="scene"></canvas>
+
+<div id="race-hud">
+  <a class="round" id="btn-home" href="index.html" title="Домой">🏠</a>
+  <div class="stat" id="found-box">🛰 <b id="found">0</b> трасс</div>
+  <div class="grow"></div>
+  <div class="stat small" id="clock">0:00</div>
+</div>
+<div id="speed"><b id="speed-num">0</b><div id="speed-bar"><i id="speed-fill"></i></div></div>
+
+<div id="toast"></div>
+
+<div id="near-card" hidden>
+  <i id="near-arrow">➤</i>
+  <div class="nc-text">
+    <b id="near-name">—</b>
+    <span id="near-sub"></span>
+  </div>
+</div>
+<div id="enter-chip" hidden>🟢 Лети в кольцо — это старт!</div>
+
+<div id="brake-zone"><span>🛑 Тормоз</span></div>
+<div id="joy"><i></i></div>
+
+<div id="loading">
+  <div class="tail-spin">🚀</div>
+  <div id="load-text">Расставляем трассы по космосу…</div>
+  <div class="bar"><i id="load-bar"></i></div>
+</div>
+
+<script type="module" src="src/world.js"></script>
+</body>
+</html>

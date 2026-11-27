@@ -83,7 +83,7 @@ else {
   course = design && buildCourse(design);
   if (!course) failPage('Эта трасса не открывается');
   def = course.def;
-  if (!ROOM) $('btn-home').href = 'races.html';
+  if (!ROOM) $('btn-home').href = qs.get('from') === 'world' ? 'world.html' : 'races.html';
 }
 const track = course.routes[0];
 const draws = course.draw || track.obstacles.map((o) => ({ track, o }));
