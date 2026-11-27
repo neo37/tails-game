@@ -1,0 +1,66 @@
+/* Открытый космос: карточка ближайшей трассы и подсказка о влёте. Остальное — из play.css и race.css. */
+/* Карточка слева по центру высоты: низ экрана занят джойстиком, тормозом и скоростью,
+   верх — шапкой и всплывашкой, так что свободна только эта полоса. */
+#near-card {
+  position: fixed;
+  left: calc(12px + env(safe-area-inset-left));
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(260px, 46vw);
+  padding: 9px 14px 9px 10px;
+  border-radius: 16px;
+  border: 2px solid #ffffff33;
+  background: #06192bd9;
+  color: #fff;
+  font: 800 15px var(--font);
+  pointer-events: none;
+  z-index: 6;
+}
+#near-card[hidden] { display: none; }
+#near-arrow {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #ffffff1a;
+  font-size: 19px;
+  font-style: normal;
+  transition: transform 0.08s linear;
+}
+#near-card .nc-text { display: grid; min-width: 0; }
+#near-card b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#near-card span { font-weight: 700; font-size: 13px; color: #cfe0ea; }
+
+/* Подсказка о влёте — под шапкой: снизу нет места ни в портрете, ни в альбоме. */
+#enter-chip {
+  position: fixed;
+  left: 50%;
+  top: calc(58px + env(safe-area-inset-top));
+  transform: translateX(-50%);
+  padding: 9px 16px;
+  border-radius: 14px;
+  background: var(--mimosa, #ffd84d);
+  color: #3a2c00;
+  font: 900 16px var(--font);
+  box-shadow: 0 6px 20px #0008;
+  animation: enter-pulse 0.7s ease-in-out infinite alternate;
+  pointer-events: none;
+  z-index: 7;
+}
+#enter-chip[hidden] { display: none; }
+@keyframes enter-pulse { from { transform: translateX(-50%) scale(1); } to { transform: translateX(-50%) scale(1.06); } }
+/* всплывашка живёт на том же месте — пока она на экране, подсказку сдвигаем ниже */
+#toast.show ~ #enter-chip { top: calc(132px + env(safe-area-inset-top)); }
+
+#found-box b { font-variant-numeric: tabular-nums; }
+#race-hud .grow { flex: 1; }
+
+@media (max-width: 520px) {
+  #near-card { font-size: 14px; padding: 7px 12px 7px 8px; }
+  #enter-chip { font-size: 14px; }
+}

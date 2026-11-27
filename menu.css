@@ -46,6 +46,7 @@ body::before { content: ''; position: fixed; inset: 0; pointer-events: none;
                          background: linear-gradient(160deg, #15507a, #0c2c44); }
 .choices.small .choice.team { background: linear-gradient(160deg, #e0577f, #7b2b57); }
 .choices.small .choice.make { background: linear-gradient(160deg, #2f8f73, #12463f); }
+.choices.small .choice.world { background: linear-gradient(160deg, #3f5ad8, #1b1b57); }
 .choices.small .choice .name { padding: 0; font-size: clamp(15px, 3.8vh, 23px); }
 .choices.small .choice .about { padding: 0; }
 .choice .big-emoji { font-size: clamp(24px, 8vh, 56px); line-height: 1; }
